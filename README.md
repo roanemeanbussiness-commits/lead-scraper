@@ -23,6 +23,8 @@ pip install -r requirements.txt
 python -m lead_scraper --seeds data/sample_seeds.csv --out output/leads.csv
 ```
 
+The scraper keeps memory in `data/lead_history.csv` by default. Future runs skip previously exported emails so the agent does not keep re-scraping the same usable leads.
+
 ## Seed CSV Format
 
 At minimum, include a `url` column:
@@ -37,6 +39,26 @@ Extra columns are preserved when useful for scoring.
 ## Discovery Integrations
 
 Google Maps discovery should feed this scraper through seed CSVs. See `docs/integrations.md` for how to use `gosom/google-maps-scraper`, `kaymen99/google-maps-lead-generator`, and `jordolang/Google-Scraper` as discovery/workflow inputs without locking this project to one scraper.
+
+## Output Goal
+
+Each run exports CSV columns for the email campaign agent:
+
+```csv
+email,possible_owner,domain,source_url,business_name,phone,address,city,state,category,blue_collar_signals,texas_signals,confidence
+```
+
+Use `--dedupe email`, `--dedupe domain`, `--dedupe email_or_domain`, or `--dedupe none` to control how aggressively the agent avoids leads it has already exported.
+
+## Fly.io
+
+This repo includes a minimal FastAPI health service for Fly deployments:
+
+```powershell
+flyctl deploy -a lead-scraper-rrhtda
+```
+
+The scraper itself still runs as a CLI job. The web process exists so Fly has a stable container entrypoint and health check target.
 
 ## Notes
 

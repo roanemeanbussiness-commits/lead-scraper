@@ -8,12 +8,24 @@ from pydantic import ValidationError
 
 from .crawler import crawl_site, domain_of
 from .extract import extract_emails, extract_possible_owners, page_text
+from .history import LeadHistory
 from .models import Lead, Seed
 from .scoring import score_lead
 
 
-def run_pipeline(seeds_path: Path, out_path: Path, max_pages: int, timeout: float) -> int:
+def run_pipeline(
+    seeds_path: Path,
+    out_path: Path,
+    history_path: Path,
+    dedupe: str,
+    max_pages: int,
+    timeout: float,
+) -> int:
+    if dedupe not in {"none", "email", "domain", "email_or_domain"}:
+        raise ValueError("dedupe must be one of: none, email, domain, email_or_domain")
+
     seeds = read_seeds(seeds_path)
+    history = LeadHistory.load(history_path)
     leads: dict[tuple[str, str], Lead] = {}
 
     for seed in seeds:
@@ -23,12 +35,16 @@ def run_pipeline(seeds_path: Path, out_path: Path, max_pages: int, timeout: floa
             confidence, blue_signals, texas_signals = score_lead(seed, text)
             owners = sorted(extract_possible_owners(page.html))
             for email in extract_emails(page.html):
-                key = (email, domain_of(page.url))
+                domain = domain_of(page.url)
+                if history.has_seen(email=email, domain=domain, mode=dedupe):
+                    continue
+
+                key = (email, domain)
                 existing = leads.get(key)
                 candidate = Lead(
                     email=email,
                     possible_owner=", ".join(owners) or None,
-                    domain=domain_of(page.url),
+                    domain=domain,
                     source_url=page.url,
                     business_name=seed.business_name,
                     phone=seed.phone,
@@ -43,8 +59,10 @@ def run_pipeline(seeds_path: Path, out_path: Path, max_pages: int, timeout: floa
                 if existing is None or candidate.confidence > existing.confidence:
                     leads[key] = candidate
 
-    write_leads(out_path, leads.values())
-    return len(leads)
+    exported = list(leads.values())
+    write_leads(out_path, exported)
+    history.append(exported)
+    return len(exported)
 
 
 def read_seeds(path: Path) -> list[Seed]:
