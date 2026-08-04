@@ -16,11 +16,11 @@ class PlaceLead:
 
 
 def google_places_configured() -> bool:
-    return bool(os.getenv("GOOGLE_MAPS_API_KEY"))
+    return bool(get_google_maps_api_key())
 
 
 def search_google_places(query: str, location: str, max_results: int = 20) -> list[PlaceLead]:
-    api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+    api_key = get_google_maps_api_key()
     if not api_key:
         raise RuntimeError("GOOGLE_MAPS_API_KEY is not configured.")
 
@@ -65,3 +65,11 @@ def search_google_places(query: str, location: str, max_results: int = 20) -> li
 
     return leads
 
+
+def get_google_maps_api_key() -> str:
+    return (
+        os.getenv("GOOGLE_MAPS_API_KEY")
+        or os.getenv("GOOGLE_PLACES_API_KEY")
+        or os.getenv("GooglePlacesAPI")
+        or ""
+    )

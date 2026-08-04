@@ -28,6 +28,8 @@ OPENAI_MODEL=gpt-4o-mini
 
 `GOOGLE_MAPS_API_KEY` powers Google Places search from the dashboard. `OPENAI_API_KEY` is optional but improves owner-name, direct-email, and custom-opener enrichment.
 
+The app also recognizes legacy Fly secret aliases `GooglePlacesAPI`, `GOOGLE_PLACES_API_KEY`, `OpenAI_api`, and `OPENAI_API`.
+
 ## Quick Start
 
 ```powershell

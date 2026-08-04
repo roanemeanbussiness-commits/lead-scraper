@@ -10,7 +10,7 @@ from .extract import is_business_email, is_generic_email, page_text
 
 
 def openai_configured() -> bool:
-    return bool(os.getenv("OPENAI_API_KEY"))
+    return bool(get_openai_api_key())
 
 
 def enrich_direct_rows_with_openai(rows: list[dict[str, str]], max_pages: int = 2) -> list[dict[str, str]]:
@@ -55,7 +55,7 @@ def extract_with_openai(
     industry: str,
     location: str,
 ) -> dict[str, str]:
-    api_key = os.getenv("OPENAI_API_KEY")
+    api_key = get_openai_api_key()
     model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     if not api_key:
         return {"owner_name": "", "email": "", "custom_opener": ""}
@@ -107,3 +107,7 @@ def extract_with_openai(
         "email": email,
         "custom_opener": str(data.get("custom_opener") or "").strip(),
     }
+
+
+def get_openai_api_key() -> str:
+    return os.getenv("OPENAI_API_KEY") or os.getenv("OpenAI_api") or os.getenv("OPENAI_API") or ""
