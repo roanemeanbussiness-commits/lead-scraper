@@ -80,7 +80,23 @@ def extract_with_openai(
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={
                 "model": model,
-                "response_format": {"type": "json_object"},
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "lead_enrichment",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "owner_name": {"type": "string"},
+                                "email": {"type": "string"},
+                                "custom_opener": {"type": "string"},
+                            },
+                            "required": ["owner_name", "email", "custom_opener"],
+                        },
+                    },
+                },
                 "messages": [
                     {
                         "role": "system",

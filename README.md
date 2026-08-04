@@ -56,6 +56,8 @@ Extra columns are preserved when useful for scoring.
 
 Google Maps discovery should feed this scraper through seed CSVs. See `docs/integrations.md` for how to use `gosom/google-maps-scraper`, `kaymen99/google-maps-lead-generator`, and `jordolang/Google-Scraper` as discovery/workflow inputs without locking this project to one scraper.
 
+See `docs/research.md` for owner-name extraction improvements and optional free/low-cost APIs that can improve lead quality.
+
 ## Output Goal
 
 The raw scraper export uses these columns:
