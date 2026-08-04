@@ -21,21 +21,23 @@ EMAIL_AGENT_FIELDNAMES = [
 
 def export_direct_leads(input_path: Path, output_path: Path, drop_generic: bool = True) -> tuple[int, int]:
     leads = read_rows(input_path)
-    cleaned_leads = clean_direct_leads(leads, drop_generic=drop_generic)
+    cleaned_leads, dropped = clean_direct_leads(leads, drop_generic=drop_generic)
     write_email_agent_csv(output_path, cleaned_leads)
-    dropped = len({email_of(row) for row in leads if email_of(row)}) - len(cleaned_leads)
-    return len(cleaned_leads), max(dropped, 0)
+    return len(cleaned_leads), dropped
 
 
-def clean_direct_leads(leads: list[dict[str, str]], drop_generic: bool = True) -> list[dict[str, str]]:
+def clean_direct_leads(leads: list[dict[str, str]], drop_generic: bool = True) -> tuple[list[dict[str, str]], int]:
     seen_emails: set[str] = set()
     cleaned_leads: list[dict[str, str]] = []
+    dropped = 0
 
     for lead in leads:
         email = email_of(lead)
         if not email or email in seen_emails:
+            dropped += 1
             continue
         if drop_generic and is_generic_email(email):
+            dropped += 1
             continue
 
         seen_emails.add(email)
@@ -57,7 +59,7 @@ def clean_direct_leads(leads: list[dict[str, str]], drop_generic: bool = True) -
             }
         )
 
-    return cleaned_leads
+    return cleaned_leads, dropped
 
 
 def read_rows(path: Path) -> list[dict[str, str]]:
