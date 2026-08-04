@@ -21,8 +21,16 @@ jobs:
       - name: Set up flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
+      - name: Check Fly token secret
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "::error::Missing GitHub Actions repository secret FLY_API_TOKEN. Add a Fly deploy token under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
       - name: Deploy
         run: flyctl deploy --remote-only -a lead-scraper-rrhtda
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
