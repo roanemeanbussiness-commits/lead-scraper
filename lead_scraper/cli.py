@@ -2,6 +2,7 @@ from pathlib import Path
 
 import typer
 
+from .exporter import export_direct_leads
 from .pipeline import run_pipeline
 
 app = typer.Typer(help="Public email lead scraper for Texas blue-collar businesses.")
@@ -26,3 +27,15 @@ def scrape(
         timeout=timeout,
     )
     typer.echo(f"Exported {total} lead rows to {out}")
+
+
+@app.command("export-direct")
+def export_direct(
+    input_csv: Path = typer.Option(..., "--input", "-i", help="Raw scraper CSV to clean for the email agent."),
+    out: Path = typer.Option(Path("output/direct_leads.csv"), "--out", "-o", help="Email-agent CSV output path."),
+    keep_generic: bool = typer.Option(False, "--keep-generic", help="Keep generic inboxes like info@ and sales@."),
+) -> None:
+    """Export direct, non-generic emails in the email-agent CSV format."""
+    saved, dropped = export_direct_leads(input_path=input_csv, output_path=out, drop_generic=not keep_generic)
+    typer.echo(f"Exported {saved} direct lead rows to {out}")
+    typer.echo(f"Dropped {dropped} duplicate or generic inbox rows")

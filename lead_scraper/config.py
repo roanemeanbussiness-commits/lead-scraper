@@ -95,3 +95,23 @@ SKIP_EMAIL_PREFIXES = {
     "webmaster",
 }
 
+GENERIC_EMAIL_PREFIXES = {
+    "admin",
+    "billing",
+    "careers",
+    "contact",
+    "enquiries",
+    "general",
+    "hello",
+    "help",
+    "info",
+    "inquiries",
+    "jobs",
+    "marketing",
+    "media",
+    "office",
+    "sales",
+    "service",
+    "support",
+    "team",
+}

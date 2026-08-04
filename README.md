@@ -20,7 +20,7 @@ The first version is seed-based: provide business websites or URLs, and the scra
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python -m lead_scraper --seeds data/sample_seeds.csv --out output/leads.csv
+python -m lead_scraper scrape --seeds data/sample_seeds.csv --out output/leads.csv
 ```
 
 The scraper keeps memory in `data/lead_history.csv` by default. Future runs skip previously exported emails so the agent does not keep re-scraping the same usable leads.
@@ -49,6 +49,14 @@ email,possible_owner,domain,source_url,business_name,phone,address,city,state,ca
 ```
 
 Use `--dedupe email`, `--dedupe domain`, `--dedupe email_or_domain`, or `--dedupe none` to control how aggressively the agent avoids leads it has already exported.
+
+To prepare a filtered CSV for the email campaign agent, run:
+
+```powershell
+python -m lead_scraper export-direct --input output/leads.csv --out output/direct_leads.csv
+```
+
+This drops generic inboxes like `info@`, `support@`, and `sales@`, deduplicates emails, and fills `first_name` for campaign template tags.
 
 ## Fly.io
 

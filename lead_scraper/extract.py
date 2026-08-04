@@ -5,7 +5,7 @@ from urllib.parse import unquote
 
 from bs4 import BeautifulSoup
 
-from .config import SKIP_EMAIL_PREFIXES
+from .config import GENERIC_EMAIL_PREFIXES, SKIP_EMAIL_PREFIXES
 
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 OWNER_RE = re.compile(
@@ -54,3 +54,12 @@ def is_business_email(email: str) -> bool:
     if "example." in domain or domain.endswith(".test"):
         return False
     return True
+
+
+def is_generic_email(email: str) -> bool:
+    if not email or "@" not in email:
+        return True
+
+    local_part = email.split("@", maxsplit=1)[0].lower().strip()
+    clean_prefix = local_part.split(".")[0].split("-")[0].split("_")[0]
+    return clean_prefix in GENERIC_EMAIL_PREFIXES
