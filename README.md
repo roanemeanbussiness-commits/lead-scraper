@@ -88,6 +88,12 @@ The dashboard at `/` can start a scrape and return a downloadable CSV.
 
 Search by business type and location, or paste one business website URL per line, then download `scraped_leads.csv`. Use the dashboard's MX option when you want stricter email-domain validation.
 
+## Auto Deploy
+
+GitHub Actions deploys to Fly on every push to `master`.
+
+Add a GitHub Actions repository secret named `FLY_API_TOKEN` with a Fly deploy token. Do not commit Fly tokens to the repo. You can also run the `Fly Deploy` workflow manually from the GitHub Actions tab.
+
 ## Notes
 
 This tool is designed for public business contact discovery. Respect robots.txt, website terms, email laws, opt-out requests, and platform rules. Do not use it for credential harvesting, private data collection, or spam.
