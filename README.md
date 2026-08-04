@@ -68,6 +68,10 @@ flyctl deploy -a lead-scraper-rrhtda
 
 The scraper itself still runs as a CLI job. The web process exists so Fly has a stable container entrypoint and health check target.
 
+The deployed dashboard at `/` also includes a browser form for starting a website-seed scrape. Paste one business website URL per line, choose city/state/industry context, and download the generated `direct_google_leads.csv` for the email outreach agent.
+
+Keep email sending in a separate agent using environment variables such as `SENDER_EMAIL` and `SENDER_APP_PASSWORD`. The scraper dashboard only prepares the CSV so outreach can be reviewed before campaigns are sent.
+
 ## Notes
 
 This tool is designed for public business contact discovery. Respect robots.txt, website terms, email laws, opt-out requests, and platform rules. Do not use it for credential harvesting, private data collection, or spam.
