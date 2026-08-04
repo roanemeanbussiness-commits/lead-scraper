@@ -4,6 +4,7 @@ import csv
 from pathlib import Path
 
 from .extract import is_generic_email
+from .validation import has_mx_record
 
 LEAD_EXPORT_FIELDNAMES = [
     "business_name",
@@ -19,14 +20,23 @@ LEAD_EXPORT_FIELDNAMES = [
 ]
 
 
-def export_direct_leads(input_path: Path, output_path: Path, drop_generic: bool = True) -> tuple[int, int]:
+def export_direct_leads(
+    input_path: Path,
+    output_path: Path,
+    drop_generic: bool = True,
+    verify_mx: bool = False,
+) -> tuple[int, int]:
     leads = read_rows(input_path)
-    cleaned_leads, dropped = clean_direct_leads(leads, drop_generic=drop_generic)
+    cleaned_leads, dropped = clean_direct_leads(leads, drop_generic=drop_generic, verify_mx=verify_mx)
     write_email_agent_csv(output_path, cleaned_leads)
     return len(cleaned_leads), dropped
 
 
-def clean_direct_leads(leads: list[dict[str, str]], drop_generic: bool = True) -> tuple[list[dict[str, str]], int]:
+def clean_direct_leads(
+    leads: list[dict[str, str]],
+    drop_generic: bool = True,
+    verify_mx: bool = False,
+) -> tuple[list[dict[str, str]], int]:
     seen_emails: set[str] = set()
     cleaned_leads: list[dict[str, str]] = []
     dropped = 0
@@ -37,6 +47,9 @@ def clean_direct_leads(leads: list[dict[str, str]], drop_generic: bool = True) -
             dropped += 1
             continue
         if drop_generic and is_generic_email(email):
+            dropped += 1
+            continue
+        if verify_mx and not has_mx_record(email):
             dropped += 1
             continue
 

@@ -6,8 +6,9 @@ from typing import Iterable
 
 from pydantic import ValidationError
 
+from .ai_enrichment import extract_with_openai, openai_configured
 from .crawler import crawl_site, domain_of
-from .extract import extract_emails, extract_possible_owners, page_text
+from .extract import extract_emails, extract_possible_owners, is_business_email, page_text
 from .history import LeadHistory
 from .models import Lead, Seed
 from .scoring import score_lead
@@ -30,11 +31,33 @@ def run_pipeline(
 
     for seed in seeds:
         pages = crawl_site(str(seed.url), max_pages=max_pages, timeout=timeout)
+        page_texts = [page_text(page.html) for page in pages]
+        combined_text = " ".join(page_texts)[:5000]
+        ai_data = (
+            extract_with_openai(
+                business_name=seed.business_name or "",
+                website=str(seed.url),
+                website_text=combined_text,
+                industry=seed.category or "",
+                location=", ".join(value for value in [seed.city, seed.state] if value),
+            )
+            if openai_configured() and combined_text
+            else {"owner_name": "", "email": "", "custom_opener": ""}
+        )
+
         for page in pages:
             text = page_text(page.html)
             confidence, blue_signals, texas_signals = score_lead(seed, text)
             owners = sorted(extract_possible_owners(page.html))
-            for email in extract_emails(page.html):
+            if ai_data.get("owner_name"):
+                owners.append(ai_data["owner_name"])
+
+            emails = extract_emails(page.html)
+            ai_email = ai_data.get("email", "")
+            if ai_email and is_business_email(ai_email):
+                emails.add(ai_email)
+
+            for email in emails:
                 domain = domain_of(page.url)
                 if history.has_seen(email=email, domain=domain, mode=dedupe):
                     continue
@@ -43,7 +66,8 @@ def run_pipeline(
                 existing = leads.get(key)
                 candidate = Lead(
                     email=email,
-                    possible_owner=", ".join(owners) or None,
+                    possible_owner=", ".join(sorted(set(owners))) or None,
+                    custom_opener=ai_data.get("custom_opener") or None,
                     domain=domain,
                     source_url=page.url,
                     business_name=seed.business_name,

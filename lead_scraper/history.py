@@ -48,7 +48,7 @@ class LeadHistory:
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
         exists = self.path.exists()
-        fieldnames = ["email", "domain", "business_name", "possible_owner", "source_url"]
+        fieldnames = ["email", "domain", "business_name", "possible_owner", "custom_opener", "source_url"]
         with self.path.open("a", newline="", encoding="utf-8") as handle:
             writer = csv.DictWriter(handle, fieldnames=fieldnames)
             if not exists:
@@ -57,4 +57,3 @@ class LeadHistory:
                 writer.writerow({field: getattr(lead, field) for field in fieldnames})
                 self.emails.add(lead.email.lower())
                 self.domains.add(lead.domain.lower())
-

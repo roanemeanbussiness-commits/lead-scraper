@@ -6,7 +6,7 @@ import os
 import httpx
 
 from .crawler import crawl_site
-from .extract import page_text
+from .extract import is_business_email, is_generic_email, page_text
 
 
 def openai_configured() -> bool:
@@ -41,6 +41,8 @@ def enrich_direct_row(row: dict[str, str], max_pages: int) -> dict[str, str]:
     if ai_data.get("owner_name") and not updated.get("owner_name"):
         updated["owner_name"] = ai_data["owner_name"]
         updated["first_name"] = ai_data["owner_name"].split()[0]
+    if ai_data.get("email") and not updated.get("verified_email"):
+        updated["verified_email"] = ai_data["email"]
     if ai_data.get("custom_opener") and not updated.get("custom_opener"):
         updated["custom_opener"] = ai_data["custom_opener"]
     return updated
@@ -56,7 +58,7 @@ def extract_with_openai(
     api_key = os.getenv("OPENAI_API_KEY")
     model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     if not api_key:
-        return {"owner_name": "", "custom_opener": ""}
+        return {"owner_name": "", "email": "", "custom_opener": ""}
 
     prompt = {
         "business_name": business_name,
@@ -65,9 +67,10 @@ def extract_with_openai(
         "location": location,
         "website_text": website_text,
         "task": (
-            "Return JSON with owner_name and custom_opener. Use owner_name only when the text clearly names "
-            "an owner, founder, CEO, president, or principal. The custom_opener should be one short sentence "
-            "based on the business services or location. Do not invent facts."
+            "Return JSON with owner_name, email, and custom_opener. Use owner_name only when the text clearly "
+            "names an owner, founder, CEO, president, or principal. For email, prefer direct personal addresses "
+            "and avoid generic inboxes such as info@, support@, sales@, contact@, admin@, hello@, office@, and team@. "
+            "The custom_opener should be one short sentence based on the business services or location. Do not invent facts."
         ),
     }
 
@@ -93,10 +96,14 @@ def extract_with_openai(
         content = response.json()["choices"][0]["message"]["content"]
         data = json.loads(content)
     except Exception:
-        return {"owner_name": "", "custom_opener": ""}
+        return {"owner_name": "", "email": "", "custom_opener": ""}
+
+    email = str(data.get("email") or "").strip().lower()
+    if email and (not is_business_email(email) or is_generic_email(email)):
+        email = ""
 
     return {
         "owner_name": str(data.get("owner_name") or "").strip(),
+        "email": email,
         "custom_opener": str(data.get("custom_opener") or "").strip(),
     }
-

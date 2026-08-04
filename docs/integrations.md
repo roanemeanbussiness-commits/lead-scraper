@@ -23,11 +23,12 @@ https://example-roofing.com,Example Roofing,210-555-0100,"123 Main St, San Anton
 ```
 
 3. Website enrichment crawls the website plus high-value subpages.
-4. Extraction returns public emails and likely owner names.
-5. Output generator exports:
+4. OpenAI enrichment can improve owner names, direct email extraction, and custom opener notes.
+5. Optional MX validation removes emails whose domains do not publish mail-server records.
+6. Output generator exports:
 
 ```csv
-email,possible_owner,domain,source_url,business_name,phone,address,city,state,category,blue_collar_signals,texas_signals,confidence
+email,possible_owner,custom_opener,domain,source_url,business_name,phone,address,city,state,category,blue_collar_signals,texas_signals,confidence
 ```
 
 ## Integration Boundary

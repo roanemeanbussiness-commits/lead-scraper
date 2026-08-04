@@ -34,8 +34,14 @@ def export_direct(
     input_csv: Path = typer.Option(..., "--input", "-i", help="Raw scraper CSV to clean into a direct-lead list."),
     out: Path = typer.Option(Path("output/direct_leads.csv"), "--out", "-o", help="Direct-lead CSV output path."),
     keep_generic: bool = typer.Option(False, "--keep-generic", help="Keep generic inboxes like info@ and sales@."),
+    verify_mx: bool = typer.Option(False, "--verify-mx", help="Require the email domain to have MX mail records."),
 ) -> None:
     """Export direct, non-generic emails in the downloadable lead CSV format."""
-    saved, dropped = export_direct_leads(input_path=input_csv, output_path=out, drop_generic=not keep_generic)
+    saved, dropped = export_direct_leads(
+        input_path=input_csv,
+        output_path=out,
+        drop_generic=not keep_generic,
+        verify_mx=verify_mx,
+    )
     typer.echo(f"Exported {saved} direct lead rows to {out}")
     typer.echo(f"Dropped {dropped} duplicate or generic inbox rows")

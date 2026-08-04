@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from lead_scraper.exporter import clean_direct_leads
 from lead_scraper.extract import is_generic_email
@@ -38,6 +39,19 @@ class ExporterTests(unittest.TestCase):
         self.assertTrue(is_generic_email("info@example.com"))
         self.assertTrue(is_generic_email("contact-us@example.com"))
         self.assertTrue(is_generic_email("sales.us@example.com"))
+
+    def test_optional_mx_verification_drops_domains_without_mail_records(self) -> None:
+        leads = [
+            {"business_name": "valid", "email": "owner@valid.example"},
+            {"business_name": "invalid", "email": "owner@invalid.example"},
+        ]
+
+        with patch("lead_scraper.exporter.has_mx_record", side_effect=lambda email: email == "owner@valid.example"):
+            cleaned, dropped = clean_direct_leads(leads, verify_mx=True)
+
+        self.assertEqual(1, len(cleaned))
+        self.assertEqual(1, dropped)
+        self.assertEqual("owner@valid.example", cleaned[0]["verified_email"])
 
 
 if __name__ == "__main__":

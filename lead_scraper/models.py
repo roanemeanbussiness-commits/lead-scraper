@@ -16,6 +16,7 @@ class Seed(BaseModel):
 class Lead(BaseModel):
     email: str
     possible_owner: str | None = None
+    custom_opener: str | None = None
     domain: str
     source_url: str
     business_name: str | None = None

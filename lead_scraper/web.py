@@ -28,6 +28,7 @@ class ScrapeRequest(BaseModel):
     max_results: int = 20
     max_pages: int = 8
     dedupe: str = "email"
+    verify_mx: bool = False
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -152,8 +153,9 @@ def dashboard() -> str:
             <div class="form-grid">
               <div><label for="max_pages">Max pages/site</label><input id="max_pages" type="number" min="1" max="20" value="8"></div>
               <div><label for="dedupe">Dedupe</label><select id="dedupe"><option>email</option><option>domain</option><option>email_or_domain</option><option>none</option></select></div>
-              <div class="actions" style="align-self:end;"><button id="run" type="submit">Start Scrape</button></div>
+              <div><label for="verify_mx">Email domain check</label><select id="verify_mx"><option value="false">Off</option><option value="true">Require MX</option></select></div>
             </div>
+            <div class="actions"><button id="run" type="submit">Start Scrape</button></div>
           </form>
           <div id="result" class="result"></div>
         </div>
@@ -226,7 +228,8 @@ def dashboard() -> str:
           category: document.querySelector("#category").value,
           max_results: Number(document.querySelector("#max_results").value),
           max_pages: Number(document.querySelector("#max_pages").value),
-          dedupe: document.querySelector("#dedupe").value
+          dedupe: document.querySelector("#dedupe").value,
+          verify_mx: document.querySelector("#verify_mx").value === "true"
         }};
 
         try {{
@@ -328,7 +331,7 @@ def scrape_from_dashboard(request: ScrapeRequest) -> dict[str, str | int]:
                 max_pages=request.max_pages,
                 timeout=12.0,
             )
-            direct_count, _dropped = export_direct_leads(raw_path, direct_path)
+            direct_count, _dropped = export_direct_leads(raw_path, direct_path, verify_mx=request.verify_mx)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
