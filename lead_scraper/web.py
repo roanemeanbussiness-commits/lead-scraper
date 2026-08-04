@@ -1,25 +1,31 @@
 from __future__ import annotations
 
 import csv
+import os
 import tempfile
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from . import __version__
-from .exporter import export_direct_leads, read_rows
+from .ai_enrichment import enrich_direct_rows_with_openai, openai_configured
+from .exporter import export_direct_leads, read_rows, write_lead_export_csv
+from .google_places import google_places_configured, search_google_places
 from .pipeline import run_pipeline
 
 app = FastAPI(title="8-Thon Intelligence Lead Scraper")
 
 
 class ScrapeRequest(BaseModel):
-    urls: str = Field(..., description="One website URL per line.")
+    query: str = ""
+    location: str = "San Antonio, TX"
+    urls: str = Field("", description="Optional website URLs, one per line.")
     city: str = "San Antonio"
     state: str = "TX"
     category: str = ""
+    max_results: int = 20
     max_pages: int = 8
     dedupe: str = "email"
 
@@ -114,24 +120,29 @@ def dashboard() -> str:
       <header>
         <div>
           <h1>8-Thon Intelligence Lead Scraper</h1>
-          <p>Texas-focused lead scraping for blue-collar businesses, owner names, direct emails, CSV export, and duplicate memory.</p>
+          <p>Texas-focused lead scraping for blue-collar businesses, owner names, public emails, CSV export, and duplicate memory.</p>
         </div>
         <div class="badge"><span class="dot"></span> Live on Fly.io - v{__version__}</div>
       </header>
 
       <section class="grid stats" aria-label="System status">
         <div class="card"><div class="metric ok">Online</div><div class="label">Dashboard</div></div>
-        <div class="card"><div class="metric">Scrape</div><div class="label">Run from browser</div></div>
-        <div class="card"><div class="metric">CSV</div><div class="label">Email-agent export</div></div>
+        <div class="card"><div class="metric">{"Maps" if google_places_configured() else "No Maps"}</div><div class="label">Google API</div></div>
+        <div class="card"><div class="metric">{"AI" if openai_configured() else "No AI"}</div><div class="label">OpenAI enrichment</div></div>
         <div class="card"><div class="metric">Memory</div><div class="label">Skips scraped leads</div></div>
       </section>
 
       <section class="grid two">
         <div class="card">
           <h2>Start Scraping</h2>
-          <p>Paste business website URLs from Google Maps, Places, or any discovery source. The agent will crawl public pages, find emails and possible owners, remove generic inboxes, and generate an outreach-ready CSV.</p>
+          <p>Search Google Maps by business type and location, or paste known business websites. The agent will find websites, crawl public pages, identify possible owners and public emails, and generate a downloadable CSV.</p>
           <form id="scrape-form">
-            <label for="urls">Website URLs</label>
+            <div class="form-grid">
+              <div><label for="query">Business type</label><input id="query" placeholder="Roofing, HVAC, plumbing"></div>
+              <div><label for="location">Search location</label><input id="location" value="San Antonio, TX"></div>
+              <div><label for="max_results">Maps results</label><input id="max_results" type="number" min="1" max="20" value="20"></div>
+            </div>
+            <label for="urls">Optional website URLs</label>
             <textarea id="urls" name="urls" placeholder="https://example-roofing.com&#10;https://example-plumbing.com"></textarea>
             <div class="form-grid">
               <div><label for="city">City</label><input id="city" value="San Antonio"></div>
@@ -152,23 +163,23 @@ def dashboard() -> str:
           <div class="steps">
             <div class="step"><div class="num">1</div><p><strong>Discovery</strong><br>Use Google Places/API output or Maps scraper exports to collect websites.</p></div>
             <div class="step"><div class="num">2</div><p><strong>Website Enrichment</strong><br>Crawl homepage, contact, about, team, service, and location pages.</p></div>
-            <div class="step"><div class="num">3</div><p><strong>Email Export</strong><br>Drop generic inboxes and return direct-lead CSV rows for your email agent.</p></div>
-            <div class="step"><div class="num">4</div><p><strong>Email Agent</strong><br>Use <code>SENDER_EMAIL</code> and <code>SENDER_APP_PASSWORD</code> in the separate sender workflow.</p></div>
+            <div class="step"><div class="num">3</div><p><strong>AI Review</strong><br>When <code>OPENAI_API_KEY</code> is set, improve owner names and custom opener notes from website text.</p></div>
+            <div class="step"><div class="num">4</div><p><strong>CSV Download</strong><br>Drop generic inboxes, dedupe leads, and download the lead list.</p></div>
           </div>
         </div>
       </section>
 
       <section class="card" style="margin-top: 16px;">
-        <h2>Campaign CSV Columns</h2>
+        <h2>Lead CSV Columns</h2>
         <table>
           <thead><tr><th>Column</th><th>Purpose</th></tr></thead>
           <tbody>
             <tr><td>business_name</td><td>Company name from Maps or website seed data.</td></tr>
             <tr><td>owner_name</td><td>Likely owner, founder, CEO, president, or principal when found.</td></tr>
-            <tr><td>first_name</td><td>Template tag for the outbound email agent.</td></tr>
+            <tr><td>first_name</td><td>First-name field for downstream tools.</td></tr>
             <tr><td>verified_email</td><td>Direct non-generic email after filtering.</td></tr>
-            <tr><td>phone, website, location, industry</td><td>Sales context and campaign segmentation fields.</td></tr>
-            <tr><td>custom_opener, source</td><td>Personalization and provenance for outreach QA.</td></tr>
+            <tr><td>phone, website, location, industry</td><td>Lead context and segmentation fields.</td></tr>
+            <tr><td>custom_opener, source</td><td>Optional AI note and provenance for QA.</td></tr>
           </tbody>
         </table>
       </section>
@@ -184,13 +195,13 @@ def dashboard() -> str:
         result.textContent = "";
         const summary = document.createElement("p");
         summary.className = "ok";
-        summary.textContent = `Scrape complete: ${{data.raw_count}} raw lead rows, ${{data.direct_count}} direct campaign rows.`;
+        summary.textContent = `Scrape complete: ${{data.discovery_count}} discovered businesses, ${{data.raw_count}} raw lead rows, ${{data.direct_count}} downloadable leads.`;
 
         const downloadLine = document.createElement("p");
         const link = document.createElement("a");
         link.href = downloadUrl;
-        link.download = "direct_google_leads.csv";
-        link.textContent = "Download direct_google_leads.csv";
+        link.download = "scraped_leads.csv";
+        link.textContent = "Download scraped_leads.csv";
         downloadLine.appendChild(link);
 
         const pre = document.createElement("pre");
@@ -207,10 +218,13 @@ def dashboard() -> str:
         run.disabled = true;
 
         const payload = {{
+          query: document.querySelector("#query").value,
+          location: document.querySelector("#location").value,
           urls: document.querySelector("#urls").value,
           city: document.querySelector("#city").value,
           state: document.querySelector("#state").value,
           category: document.querySelector("#category").value,
+          max_results: Number(document.querySelector("#max_results").value),
           max_pages: Number(document.querySelector("#max_pages").value),
           dedupe: document.querySelector("#dedupe").value
         }};
@@ -239,43 +253,98 @@ def dashboard() -> str:
 
 @app.post("/api/scrape")
 def scrape_from_dashboard(request: ScrapeRequest) -> dict[str, str | int]:
-    urls = [line.strip() for line in request.urls.splitlines() if line.strip()]
-    if not urls:
-        return {"raw_count": 0, "direct_count": 0, "csv": "", "preview": "No website URLs were provided."}
+    seeds = []
+    notes = []
+
+    if request.query.strip():
+        if google_places_configured():
+            try:
+                places = search_google_places(
+                    query=request.query,
+                    location=request.location,
+                    max_results=request.max_results,
+                )
+            except Exception as exc:
+                raise HTTPException(status_code=502, detail=f"Google Places search failed: {exc}") from exc
+            for place in places:
+                seeds.append(
+                    {
+                        "url": normalize_seed_url(place.website),
+                        "business_name": place.business_name,
+                        "phone": place.phone,
+                        "address": place.address,
+                        "city": request.city,
+                        "state": request.state,
+                        "category": place.category or request.category or request.query,
+                    }
+                )
+        else:
+            notes.append("GOOGLE_MAPS_API_KEY is not configured, so only pasted websites were scraped.")
+
+    for url in [line.strip() for line in request.urls.splitlines() if line.strip()]:
+        seeds.append(
+            {
+                "url": normalize_seed_url(url),
+                "business_name": "",
+                "phone": "",
+                "address": "",
+                "city": request.city,
+                "state": request.state,
+                "category": request.category or request.query,
+            }
+        )
+
+    seeds = dedupe_seed_urls(seeds)
+    if not seeds:
+        return {
+            "discovery_count": 0,
+            "raw_count": 0,
+            "direct_count": 0,
+            "csv": "",
+            "preview": "No businesses were found. Add GOOGLE_MAPS_API_KEY or paste website URLs.",
+        }
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         seeds_path = tmp_path / "seeds.csv"
         raw_path = tmp_path / "leads.csv"
-        direct_path = tmp_path / "direct_google_leads.csv"
-        history_path = tmp_path / "lead_history.csv"
+        direct_path = tmp_path / "scraped_leads.csv"
+        history_path = Path(os.getenv("LEAD_HISTORY_PATH", "data/lead_history.csv"))
 
         with seeds_path.open("w", newline="", encoding="utf-8") as handle:
-            writer = csv.DictWriter(handle, fieldnames=["url", "city", "state", "category"])
+            writer = csv.DictWriter(
+                handle,
+                fieldnames=["url", "business_name", "phone", "address", "city", "state", "category"],
+            )
             writer.writeheader()
-            for url in urls:
-                writer.writerow(
-                    {
-                        "url": url,
-                        "city": request.city,
-                        "state": request.state,
-                        "category": request.category,
-                    }
-                )
+            writer.writerows(seeds)
 
-        raw_count = run_pipeline(
-            seeds_path=seeds_path,
-            out_path=raw_path,
-            history_path=history_path,
-            dedupe=request.dedupe,
-            max_pages=request.max_pages,
-            timeout=12.0,
-        )
-        direct_count, _dropped = export_direct_leads(raw_path, direct_path)
+        try:
+            raw_count = run_pipeline(
+                seeds_path=seeds_path,
+                out_path=raw_path,
+                history_path=history_path,
+                dedupe=request.dedupe,
+                max_pages=request.max_pages,
+                timeout=12.0,
+            )
+            direct_count, _dropped = export_direct_leads(raw_path, direct_path)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        direct_rows = read_rows(direct_path)
+        if openai_configured() and direct_rows:
+            direct_rows = enrich_direct_rows_with_openai(direct_rows)
+            write_lead_export_csv(direct_path, direct_rows)
+            direct_count = len(direct_rows)
+
         csv_text = direct_path.read_text(encoding="utf-8")
         preview = csv_text if direct_count <= 5 else preview_csv(direct_path, limit=5)
+        if notes:
+            preview = "\n".join(notes) + "\n\n" + preview
 
     return {
+        "discovery_count": len(seeds),
         "raw_count": raw_count,
         "direct_count": direct_count,
         "csv": csv_text,
@@ -289,6 +358,8 @@ def status() -> dict[str, str]:
         "service": "8-Thon Intelligence Lead Scraper",
         "version": __version__,
         "status": "ok",
+        "google_maps": "configured" if google_places_configured() else "missing",
+        "openai": "configured" if openai_configured() else "missing",
     }
 
 
@@ -306,3 +377,22 @@ def preview_csv(path: Path, limit: int) -> str:
     for row in rows[:limit]:
         lines.append(",".join(row.get(field, "") for field in fieldnames))
     return "\n".join(lines)
+
+
+def dedupe_seed_urls(seeds: list[dict[str, str]]) -> list[dict[str, str]]:
+    seen = set()
+    deduped = []
+    for seed in seeds:
+        key = seed["url"].strip().lower().rstrip("/")
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(seed)
+    return deduped
+
+
+def normalize_seed_url(url: str) -> str:
+    value = url.strip()
+    if not value.startswith(("http://", "https://")):
+        value = f"https://{value}"
+    return value

@@ -7,7 +7,7 @@ from lead_scraper.extract import is_generic_email
 
 
 class ExporterTests(unittest.TestCase):
-    def test_filters_generic_emails_and_formats_campaign_fields(self) -> None:
+    def test_filters_generic_emails_and_formats_lead_fields(self) -> None:
         leads = [
             {
                 "business_name": "apex landscaping",
@@ -42,4 +42,3 @@ class ExporterTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -10,7 +10,7 @@ Discovery tools find candidate businesses from Google Maps or search. The local 
 | --- | --- | --- |
 | `gosom/google-maps-scraper` | High-volume Google Maps discovery | Strong fit for extracting name, address, phone, website, rating, review count, coordinates, and sometimes email data. |
 | `kaymen99/google-maps-lead-generator` | API-backed discovery and AI enrichment pattern | Uses Serper Maps API plus web enrichment ideas. Useful when we want predictable API-based discovery instead of browser automation. |
-| `jordolang/Google-Scraper` | Outreach workflow inspiration | Useful for output structure, tests, docs, and personalized outreach templates after lead data is verified. |
+| `jordolang/Google-Scraper` | Workflow inspiration | Useful for output structure, tests, docs, and lead-list formatting after lead data is verified. |
 
 ## Normal Agent Workflow
 
@@ -33,4 +33,3 @@ email,possible_owner,domain,source_url,business_name,phone,address,city,state,ca
 ## Integration Boundary
 
 Do not vendor upstream projects directly unless their license, dependency footprint, and runtime behavior have been reviewed. Prefer calling them as optional discovery adapters that produce seed CSV files for this package.
-

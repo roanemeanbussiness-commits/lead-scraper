@@ -1,8 +1,8 @@
 # 8-Thon Intelligence Lead Scraper
 
-A focused public-web email scraper for blue-collar businesses in Texas, starting with San Antonio.
+A focused public-web lead scraper for blue-collar businesses in Texas, starting with San Antonio.
 
-The first version is seed-based: provide business websites or URLs, and the scraper crawls likely contact pages, extracts public emails, scores Texas/San Antonio relevance, and exports deduplicated CSV leads.
+Use the dashboard to search Google Maps by business type and location, or provide business websites directly. The scraper crawls likely contact pages, extracts public emails, enriches owner/opener fields when OpenAI is configured, and exports deduplicated CSV leads.
 
 ## What It Does
 
@@ -13,6 +13,18 @@ The first version is seed-based: provide business websites or URLs, and the scra
 - Filters out common low-value addresses like image assets and placeholders.
 - Scores leads for Texas, San Antonio, and blue-collar trade relevance.
 - Exports a clean CSV with source URL, domain, email, possible owner, business name, phone, address, trade signals, and confidence.
+
+## API Keys
+
+Set these in your local shell or Fly.io secrets:
+
+```powershell
+GOOGLE_MAPS_API_KEY=your_google_maps_key
+OPENAI_API_KEY=your_openai_key
+OPENAI_MODEL=gpt-4o-mini
+```
+
+`GOOGLE_MAPS_API_KEY` powers Google Places search from the dashboard. `OPENAI_API_KEY` is optional but improves owner-name and custom-opener enrichment.
 
 ## Quick Start
 
@@ -42,7 +54,7 @@ Google Maps discovery should feed this scraper through seed CSVs. See `docs/inte
 
 ## Output Goal
 
-Each run exports CSV columns for the email campaign agent:
+The raw scraper export uses these columns:
 
 ```csv
 email,possible_owner,domain,source_url,business_name,phone,address,city,state,category,blue_collar_signals,texas_signals,confidence
@@ -50,13 +62,13 @@ email,possible_owner,domain,source_url,business_name,phone,address,city,state,ca
 
 Use `--dedupe email`, `--dedupe domain`, `--dedupe email_or_domain`, or `--dedupe none` to control how aggressively the agent avoids leads it has already exported.
 
-To prepare a filtered CSV for the email campaign agent, run:
+To prepare a filtered direct-lead CSV, run:
 
 ```powershell
 python -m lead_scraper export-direct --input output/leads.csv --out output/direct_leads.csv
 ```
 
-This drops generic inboxes like `info@`, `support@`, and `sales@`, deduplicates emails, and fills `first_name` for campaign template tags.
+This drops generic inboxes like `info@`, `support@`, and `sales@`, deduplicates emails, and fills `first_name` for downstream tools.
 
 ## Fly.io
 
@@ -66,11 +78,9 @@ This repo includes a minimal FastAPI health service for Fly deployments:
 flyctl deploy -a lead-scraper-rrhtda
 ```
 
-The scraper itself still runs as a CLI job. The web process exists so Fly has a stable container entrypoint and health check target.
+The dashboard at `/` can start a scrape and return a downloadable CSV.
 
-The deployed dashboard at `/` also includes a browser form for starting a website-seed scrape. Paste one business website URL per line, choose city/state/industry context, and download the generated `direct_google_leads.csv` for the email outreach agent.
-
-Keep email sending in a separate agent using environment variables such as `SENDER_EMAIL` and `SENDER_APP_PASSWORD`. The scraper dashboard only prepares the CSV so outreach can be reviewed before campaigns are sent.
+Search by business type and location, or paste one business website URL per line, then download `scraped_leads.csv`.
 
 ## Notes
 

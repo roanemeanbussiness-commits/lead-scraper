@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .extract import is_generic_email
 
-EMAIL_AGENT_FIELDNAMES = [
+LEAD_EXPORT_FIELDNAMES = [
     "business_name",
     "owner_name",
     "first_name",
@@ -68,9 +68,13 @@ def read_rows(path: Path) -> list[dict[str, str]]:
 
 
 def write_email_agent_csv(path: Path, leads: list[dict[str, str]]) -> None:
+    write_lead_export_csv(path, leads)
+
+
+def write_lead_export_csv(path: Path, leads: list[dict[str, str]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=EMAIL_AGENT_FIELDNAMES)
+        writer = csv.DictWriter(handle, fieldnames=LEAD_EXPORT_FIELDNAMES)
         writer.writeheader()
         writer.writerows(leads)
 
