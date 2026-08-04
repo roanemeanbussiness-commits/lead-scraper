@@ -8,6 +8,11 @@ from bs4 import BeautifulSoup
 from .config import SKIP_EMAIL_PREFIXES
 
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
+OWNER_RE = re.compile(
+    r"(?:owner|founder|co-founder|ceo|president|principal|operator|general manager)"
+    r"\s*[:\-]?\s*([A-Z][a-z]+\s+[A-Z][a-z]+)",
+    re.IGNORECASE,
+)
 
 
 def page_text(html: str) -> str:
@@ -30,6 +35,12 @@ def extract_emails(html: str) -> set[str]:
     return {email.lower() for email in candidates if is_business_email(email)}
 
 
+def extract_possible_owners(html: str) -> set[str]:
+    text = page_text(html)
+    owners = {match.strip() for match in OWNER_RE.findall(text)}
+    return {owner for owner in owners if not owner.lower().startswith(("the ", "our "))}
+
+
 def is_business_email(email: str) -> bool:
     local, _, domain = email.lower().partition("@")
     if not local or not domain:
@@ -43,4 +54,3 @@ def is_business_email(email: str) -> bool:
     if "example." in domain or domain.endswith(".test"):
         return False
     return True
-

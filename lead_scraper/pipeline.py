@@ -7,7 +7,7 @@ from typing import Iterable
 from pydantic import ValidationError
 
 from .crawler import crawl_site, domain_of
-from .extract import extract_emails, page_text
+from .extract import extract_emails, extract_possible_owners, page_text
 from .models import Lead, Seed
 from .scoring import score_lead
 
@@ -21,14 +21,18 @@ def run_pipeline(seeds_path: Path, out_path: Path, max_pages: int, timeout: floa
         for page in pages:
             text = page_text(page.html)
             confidence, blue_signals, texas_signals = score_lead(seed, text)
+            owners = sorted(extract_possible_owners(page.html))
             for email in extract_emails(page.html):
                 key = (email, domain_of(page.url))
                 existing = leads.get(key)
                 candidate = Lead(
                     email=email,
+                    possible_owner=", ".join(owners) or None,
                     domain=domain_of(page.url),
                     source_url=page.url,
                     business_name=seed.business_name,
+                    phone=seed.phone,
+                    address=seed.address,
                     city=seed.city,
                     state=seed.state,
                     category=seed.category,
@@ -53,6 +57,8 @@ def read_seeds(path: Path) -> list[Seed]:
                     Seed(
                         url=row.get("url") or row.get("website") or row.get("domain"),
                         business_name=row.get("business_name") or row.get("name"),
+                        phone=row.get("phone") or row.get("phone_number"),
+                        address=row.get("address") or row.get("street_address"),
                         city=row.get("city"),
                         state=row.get("state"),
                         category=row.get("category") or row.get("trade"),

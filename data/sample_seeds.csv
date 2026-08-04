@@ -1,3 +1,2 @@
-url,business_name,city,state,category
-https://www.example.com,Example Contractor,San Antonio,TX,General Contractor
-
+url,business_name,phone,address,city,state,category
+https://www.example.com,Example Contractor,210-555-0100,"123 Main St, San Antonio, TX",San Antonio,TX,General Contractor
