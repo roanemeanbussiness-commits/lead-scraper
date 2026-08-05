@@ -3,10 +3,22 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock, patch
 
-from lead_scraper.google_places import PlaceLead, search_google_places, search_google_places_queries
+from lead_scraper.google_places import (
+    PlaceLead,
+    keyword_discovery_queries,
+    search_google_places,
+    search_google_places_queries,
+)
 
 
 class GooglePlacesTests(unittest.TestCase):
+    def test_large_keyword_target_expands_trade_queries(self) -> None:
+        queries = keyword_discovery_queries("pool constrution", 1000)
+
+        self.assertGreaterEqual(len(queries), 20)
+        self.assertIn("pool builder", queries)
+        self.assertIn("swimming pool contractor", queries)
+
     @patch.dict("os.environ", {"GOOGLE_MAPS_API_KEY": "test-key"}, clear=True)
     @patch("lead_scraper.google_places.httpx.Client")
     def test_follows_page_tokens_and_returns_place_ids(self, client_class: MagicMock) -> None:

@@ -63,7 +63,11 @@ class OwnerExtractionTests(unittest.TestCase):
         self.assertEqual("General Manager", candidates[0].role)
 
     def test_rejects_obvious_non_people(self) -> None:
-        html = "<p>Owner: The Business Team</p><p>Our Services, Owner</p>"
+        html = (
+            "<p>Owner: The Business Team</p><p>Our Services, Owner</p>"
+            "<p>Owner: stays involved in</p><p>President: ship if you</p>"
+            "<p>Founder: in San Antonio</p><p>Owner: of Custom Pools</p>"
+        )
 
         self.assertEqual(set(), extract_possible_owners(html))
 

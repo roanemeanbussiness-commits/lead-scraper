@@ -18,6 +18,42 @@ PLACES_FIELD_MASK = (
     "nextPageToken"
 )
 
+TRADE_QUERY_EXPANSIONS = {
+    "pool": [
+        "pool builder", "swimming pool contractor", "custom pool builder", "pool installation",
+        "pool construction company", "inground pool builder", "pool remodeling contractor",
+        "pool service company", "pool repair contractor",
+    ],
+    "roof": [
+        "roofing contractor", "residential roofer", "commercial roofing company", "roof repair",
+        "metal roofing contractor", "storm damage roofer", "roof replacement company",
+    ],
+    "plumb": [
+        "plumbing contractor", "licensed plumber", "commercial plumber", "residential plumber",
+        "drain cleaning company", "water heater contractor", "emergency plumber",
+    ],
+    "landscap": [
+        "landscaping company", "landscape contractor", "commercial landscaper", "lawn care company",
+        "hardscape contractor", "irrigation contractor", "tree service company",
+    ],
+    "hvac": [
+        "HVAC contractor", "air conditioning company", "heating contractor", "AC repair company",
+        "commercial HVAC company", "residential HVAC contractor",
+    ],
+    "electric": [
+        "electrical contractor", "licensed electrician", "commercial electrician",
+        "residential electrician", "electrical service company",
+    ],
+    "concrete": [
+        "concrete contractor", "commercial concrete company", "concrete foundation contractor",
+        "decorative concrete company", "concrete repair contractor",
+    ],
+    "paint": [
+        "painting contractor", "commercial painting company", "residential painter",
+        "exterior painting contractor", "industrial painting company",
+    ],
+}
+
 
 @dataclass(frozen=True)
 class PlaceLead:
@@ -118,6 +154,44 @@ def search_google_places_queries(queries: list[str], location: str, max_results:
             if len(results) >= max_results:
                 return results
     return results
+
+
+def keyword_discovery_queries(query: str, target_count: int) -> list[str]:
+    """Expand a trade keyword into distinct Places searches for larger candidate pools."""
+    clean = " ".join(query.split()).strip()
+    if not clean:
+        return []
+    max_queries = min(24, max(4, math.ceil(max(1, target_count) / 45)))
+    candidates = [clean]
+    lowered = clean.lower()
+    for signal, expansions in TRADE_QUERY_EXPANSIONS.items():
+        if signal in lowered:
+            candidates.extend(expansions)
+    candidates.extend(
+        [
+            f"{clean} contractor",
+            f"{clean} company",
+            f"{clean} services",
+            f"{clean} specialist",
+            f"local {clean}",
+            f"commercial {clean}",
+            f"residential {clean}",
+            f"licensed {clean}",
+            f"family owned {clean}",
+            f"independent {clean} company",
+        ]
+    )
+    output: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        normalized = " ".join(candidate.split()).strip()
+        key = normalized.lower()
+        if key and key not in seen:
+            seen.add(key)
+            output.append(normalized)
+        if len(output) >= max_queries:
+            break
+    return output
 
 
 def get_google_maps_api_key() -> str:

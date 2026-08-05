@@ -211,15 +211,18 @@ DASHBOARD_HTML = r"""<!doctype html>
           <details class="section" open>
             <summary><i data-lucide="gauge"></i>Search volume</summary>
             <div class="section-body">
-              <div class="grid-2"><div><label for="lookalike_candidates">Candidate pool</label><select id="lookalike_candidates"><option>80</option><option selected>160</option><option>240</option><option>300</option></select></div><div><label for="lookalike_results">Result target</label><select id="lookalike_results"><option>25</option><option selected>50</option><option>75</option><option>100</option></select></div></div>
-              <div class="grid-2" style="margin-top:10px"><div><label for="min_score">Minimum score</label><input id="min_score" type="number" min="0" max="100" value="45"></div><div><label for="lookalike_pages">Pages per site</label><select id="lookalike_pages"><option>4</option><option selected>6</option><option>8</option></select></div></div>
-              <input id="freshness" type="hidden" value="12"><input id="lookalike_dedupe" type="hidden" value="email"><input id="lookalike_mx" type="hidden" value="false">
+              <div class="grid-2"><div><label for="lookalike_target_type">Target</label><select id="lookalike_target_type"><option value="companies">Companies</option><option value="emails">Direct emails</option></select></div><div><label for="lookalike_target_count">Target count</label><input id="lookalike_target_count" type="number" min="1" max="1000" value="50"></div></div>
+              <div class="grid-2" style="margin-top:10px"><div><label for="lookalike_candidates">Candidate pool</label><input id="lookalike_candidates" type="number" min="10" max="3000" step="10" value="160"></div><div><label for="freshness">Data freshness months</label><input id="freshness" type="number" min="1" max="120" value="12"></div></div>
+              <div class="grid-2" style="margin-top:10px"><div><label for="dedupe_months">Dedupe window months</label><input id="dedupe_months" type="number" min="1" max="120" value="12"></div><div><label for="min_score">Minimum score</label><input id="min_score" type="number" min="0" max="100" value="45"></div></div>
+              <div class="field" style="margin-top:10px"><label for="lookalike_pages">Pages per site</label><select id="lookalike_pages"><option>4</option><option selected>6</option><option>8</option></select></div>
+              <input id="lookalike_dedupe" type="hidden" value="email"><input id="lookalike_mx" type="hidden" value="false">
             </div>
           </details>
           <div class="run-dock"><button id="lookalike-run" class="button primary" type="submit"><i data-lucide="sparkles"></i>Find companies</button></div>
         </form>
         <form id="keyword-form" class="filter-form hidden">
-          <details class="section" open><summary><i data-lucide="search"></i>Keyword discovery</summary><div class="section-body"><div class="field"><label for="query">Business type</label><input id="query" placeholder="roofing contractor"></div><div class="field"><label for="location">Location</label><input id="location" value="San Antonio, TX"></div><div class="field"><label for="urls">Additional websites</label><textarea id="urls"></textarea></div><div class="grid-2"><div><label for="city">City</label><input id="city" value="San Antonio"></div><div><label for="state">State</label><input id="state" value="TX"></div></div><input id="category" type="hidden"><input id="max_results" type="hidden" value="60"><input id="max_pages" type="hidden" value="6"><input id="verify_mx" type="hidden" value="false"></div></details>
+          <details class="section" open><summary><i data-lucide="search"></i>Keyword discovery</summary><div class="section-body"><div class="field"><label for="query">Business type</label><input id="query" placeholder="roofing contractor"></div><div class="field"><label for="location">Location</label><input id="location" value="San Antonio, TX"></div><div class="field"><label for="urls">Additional websites</label><textarea id="urls"></textarea></div><div class="grid-2"><div><label for="city">City</label><input id="city" value="San Antonio"></div><div><label for="state">State</label><input id="state" value="TX"></div></div><input id="category" type="hidden"><input id="max_pages" type="hidden" value="6"><input id="verify_mx" type="hidden" value="false"></div></details>
+          <details class="section" open><summary><i data-lucide="gauge"></i>Search volume</summary><div class="section-body"><div class="grid-2"><div><label for="keyword_target_type">Target</label><select id="keyword_target_type"><option value="companies">Companies</option><option value="emails">Direct emails</option></select></div><div><label for="keyword_target_count">Target count</label><input id="keyword_target_count" type="number" min="1" max="1000" value="100"></div></div><div class="field" style="margin-top:10px"><label for="keyword_dedupe_months">Dedupe window months</label><input id="keyword_dedupe_months" type="number" min="1" max="120" value="12"></div></div></details>
           <div class="run-dock"><button id="keyword-run" class="button primary" type="submit"><i data-lucide="search"></i>Run discovery</button></div>
         </form>
       </aside>
@@ -256,13 +259,13 @@ DASHBOARD_HTML = r"""<!doctype html>
   function lookalikePayload() { return {
     reference_urls: value("#reference_urls"), negative_urls: value("#negative_urls"), matching_mode: $('input[name="matching_mode"]:checked').value,
     location: value("#lookalike_location"), city: value("#lookalike_city"), state: value("#lookalike_state"), max_candidates: Number(value("#lookalike_candidates")),
-    max_results: Number(value("#lookalike_results")), max_pages: Number(value("#lookalike_pages")), min_score: Number(value("#min_score")), updated_within_months: 12,
-    dedupe: "email", verify_mx: false, industries_any: "", industries_none: "", tags_any: value("#tags_any"), tags_none: value("#tags_none"),
+    max_results: Number(value("#lookalike_target_count")), target_type: value("#lookalike_target_type"), target_count: Number(value("#lookalike_target_count")), max_pages: Number(value("#lookalike_pages")), min_score: Number(value("#min_score")), updated_within_months: Number(value("#freshness")),
+    dedupe: "email", dedupe_months: Number(value("#dedupe_months")), verify_mx: false, industries_any: "", industries_none: "", tags_any: value("#tags_any"), tags_none: value("#tags_none"),
     keywords_any: value("#keywords_any"), keywords_all: value("#keywords_all"), keywords_none: value("#keywords_none"), technologies_any: value("#technologies_any"),
     technologies_none: value("#technologies_none"), technologies_all: "", require_hiring: bool("#require_hiring"), ecommerce_only: bool("#ecommerce_only"),
     require_owner: bool("#require_owner"), require_contact_email: bool("#require_contact_email"), decision_maker_roles: value("#decision_maker_roles")
   }; }
-  function keywordPayload() { return { query: value("#query"), location: value("#location"), urls: value("#urls"), city: value("#city"), state: value("#state"), category: value("#category"), max_results: 60, max_pages: 6, dedupe: "email", verify_mx: false }; }
+  function keywordPayload() { return { query: value("#query"), location: value("#location"), urls: value("#urls"), city: value("#city"), state: value("#state"), category: value("#category"), max_results: Number(value("#keyword_target_count")), target_type: value("#keyword_target_type"), target_count: Number(value("#keyword_target_count")), dedupe_months: Number(value("#keyword_dedupe_months")), max_pages: 6, dedupe: "email", verify_mx: false }; }
 
   $("#lookalike-form").addEventListener("submit", event => { event.preventDefault(); startJob("/api/jobs/lookalikes", lookalikePayload()); });
   $("#keyword-form").addEventListener("submit", event => { event.preventDefault(); startJob("/api/jobs/scrape", keywordPayload()); });
@@ -287,7 +290,8 @@ DASHBOARD_HTML = r"""<!doctype html>
     sessionStorage.removeItem("8thon-active-job"); const result = job.result || {}; state.companies = result.matches || []; state.contacts = result.contacts || []; state.queryId = result.query_id || ""; state.downloadUrl = job.download_url || "";
     $("#company-count").textContent = state.companies.length || result.discovery_count || 0; $("#contact-count").textContent = state.contacts.length || result.direct_count || 0;
     $("#download").disabled = !state.downloadUrl; $("#summarybar").classList.remove("hidden"); $("#empty").classList.add("hidden");
-    $("#result-detail").textContent = result.candidates_discovered ? `from ${result.candidates_discovered} discovered candidates` : `${result.direct_count || 0} direct emails`;
+    const targetLabel = result.target_type === "emails" ? "emails" : "companies"; const targetStatus = result.target_count ? ` · ${result.target_achieved || 0}/${result.target_count} ${targetLabel}${result.target_met ? " reached" : ""}` : "";
+    $("#result-detail").textContent = (result.candidates_discovered ? `from ${result.candidates_discovered} discovered candidates` : `${result.direct_count || 0} direct emails`) + targetStatus;
     setBusy(false); setTimeout(() => $("#progress-panel").classList.add("hidden"), 900); renderView();
   }
   function renderView() {

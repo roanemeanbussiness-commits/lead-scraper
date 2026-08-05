@@ -102,7 +102,8 @@ def find_lookalikes(
     ).hexdigest()[:16]
 
     combined = merge_profiles(positive_profiles)
-    queries = discovery_queries(combined)
+    query_count = min(24, max(8, math.ceil(max_candidates / 50)))
+    queries = discovery_queries(combined, max_queries=query_count)
     report(16, "Discovery", f"Running {len(queries)} semantic Google Places searches")
     places = search_google_places_queries(queries, location, max_results=max_candidates)
     report(26, "Discovery", f"Found {len(places)} unique company candidates")
@@ -518,11 +519,16 @@ def similarity_reasons(candidate: CompanyProfile, ideal: CompanyProfile) -> list
     return reasons or ["Website meaning is similar to the reference profile"]
 
 
-def discovery_queries(profile: CompanyProfile) -> list[str]:
+def discovery_queries(profile: CompanyProfile, max_queries: int = 8) -> list[str]:
     values = list(profile.discovery_queries)
-    values.extend(profile.services[:3])
+    values.extend(profile.services)
     if profile.industry:
         values.append(profile.industry)
+    values.extend(profile.specialties)
+    for service in profile.services[:6]:
+        values.extend([f"{service} contractor", f"{service} company", f"{service} services"])
+    if profile.industry:
+        values.extend([f"{profile.industry} company", f"{profile.industry} contractor"])
     result: list[str] = []
     seen: set[str] = set()
     for value in values:
@@ -531,7 +537,7 @@ def discovery_queries(profile: CompanyProfile) -> list[str]:
         if clean and key not in seen:
             seen.add(key)
             result.append(clean)
-        if len(result) >= 8:
+        if len(result) >= max(1, max_queries):
             break
     return result or ["local service business"]
 

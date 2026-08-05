@@ -25,7 +25,9 @@ Use the dashboard's default Lookalike mode to paste ideal-company websites and f
 - Caches reference-company fingerprints and reports estimated API work for each search.
 - Learns from query-specific Fit / Not fit feedback without globally blacklisting a company.
 - Runs dashboard searches as background jobs with live stage-by-stage progress instead of holding one long browser request open.
-- Supports 50, 75, or 100 ranked-company targets from multi-query candidate pools up to 300 businesses.
+- Supports custom company or direct-email targets from 1 to 1,000 and candidate pools up to 3,000 businesses.
+- Expands large keyword jobs across up to 24 trade-aware Google Places queries instead of relying on one 60-result search.
+- Lets each search choose catalog-freshness and lead-history dedupe windows from 1 to 120 months.
 - Separates Companies and Contacts views, with decision-maker title/email filters and reusable cached contacts.
 - Captures personal and company LinkedIn links explicitly published on business websites and provides a targeted LinkedIn people-search link when no profile is published.
 - Adds include/exclude industry tags, with `software` and `saas` excluded by default for blue-collar searches.
@@ -69,7 +71,7 @@ In the dashboard's Lookalike tab:
 3. Choose the target market, candidate-pool size, result count, and minimum score.
 4. Run the search, follow the live discovery/ranking/contact progress, review Companies or Contacts, and download the direct-email lead CSV.
 
-The result target is a company target, not a guarantee of 50-100 direct personal emails. Email yield depends on how many businesses publicly publish a non-generic address. Contacts without a public direct email remain visible with source evidence and a LinkedIn decision-maker lookup, but they are not placed in the email-agent CSV.
+Choose either a company target or a direct-email target. For an email target, the agent automatically harvests and enriches a larger company pool to account for websites that do not publish a personal address. The target is still best effort: email yield depends on the available market and how many businesses publicly publish a valid non-generic email. Contacts without one remain visible with evidence and a LinkedIn decision-maker lookup, but they are not placed in the email-agent CSV.
 
 The user does not provide a keyword. The agent profiles the reference websites, creates several discovery strategies, ranks both new candidates and its saved company catalog, and carries the fit factors into the CSV. See `docs/lookalike-research.md` for architecture, research, limitations, and future free-data imports.
 

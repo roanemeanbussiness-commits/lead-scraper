@@ -283,6 +283,8 @@ def looks_like_person_name(name: str) -> bool:
     parts = name.strip().split()
     if len(parts) < 2 or len(parts) > 3:
         return False
+    if not all(part and part[0].isupper() for part in parts):
+        return False
     lowered = {part.lower().strip(".,") for part in parts}
     if parts[0].lower() in BAD_NAME_PREFIXES:
         return False

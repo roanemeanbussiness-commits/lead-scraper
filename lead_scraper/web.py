@@ -18,7 +18,11 @@ from .company_catalog import CompanyCatalog
 from .crawler import UnsafeURL, domain_of, validate_public_url
 from .dashboard import render_dashboard
 from .exporter import export_direct_leads, read_rows
-from .google_places import google_places_configured, search_google_places
+from .google_places import (
+    google_places_configured,
+    keyword_discovery_queries,
+    search_google_places_queries,
+)
 from .lookalike import LookalikeFilters, find_lookalikes, ranked_seed
 from .jobs import JobManager
 from .pipeline import run_pipeline
@@ -36,10 +40,13 @@ class ScrapeRequest(BaseModel):
     city: str = "San Antonio"
     state: str = "TX"
     category: str = ""
-    max_results: int = Field(20, ge=1, le=60)
+    max_results: int = Field(20, ge=1, le=1000)
+    target_type: str = "companies"
+    target_count: int | None = Field(None, ge=1, le=1000)
     max_pages: int = Field(8, ge=1, le=15)
     dedupe: str = "email"
     verify_mx: bool = False
+    dedupe_months: int = Field(12, ge=1, le=120)
 
 
 class LookalikeRequest(BaseModel):
@@ -48,12 +55,15 @@ class LookalikeRequest(BaseModel):
     location: str = "San Antonio, TX"
     city: str = "San Antonio"
     state: str = "TX"
-    max_candidates: int = Field(160, ge=10, le=300)
-    max_results: int = Field(50, ge=1, le=100)
+    max_candidates: int = Field(160, ge=10, le=3000)
+    max_results: int = Field(50, ge=1, le=1000)
+    target_type: str = "companies"
+    target_count: int | None = Field(None, ge=1, le=1000)
     max_pages: int = Field(6, ge=1, le=12)
     min_score: float = Field(45.0, ge=0, le=100)
     dedupe: str = "email"
     verify_mx: bool = False
+    dedupe_months: int = Field(12, ge=1, le=120)
     matching_mode: str = "precise"
     industries_any: str = ""
     industries_none: str = ""
@@ -70,7 +80,7 @@ class LookalikeRequest(BaseModel):
     require_owner: bool = False
     require_contact_email: bool = False
     decision_maker_roles: str = "owner, founder, president, ceo, principal, general manager"
-    updated_within_months: int = Field(12, ge=1, le=60)
+    updated_within_months: int = Field(12, ge=1, le=120)
 
 
 class FeedbackRequest(BaseModel):
@@ -156,6 +166,10 @@ def execute_lookalike_search(
     negative_urls = parse_public_urls(request.negative_urls)
     reference_domains = [domain_of(url) for url in reference_urls]
     catalog_path = Path(os.getenv("COMPANY_CATALOG_PATH", "data/company_catalog.db"))
+    target_type = validate_target_type(request.target_type)
+    target_count = request.target_count or request.max_results
+    result_goal = target_count if target_type == "companies" else min(1000, max(100, target_count * 6))
+    candidate_goal = min(3000, max(request.max_candidates, result_goal * 2))
 
     try:
         filters = LookalikeFilters(
@@ -180,8 +194,8 @@ def execute_lookalike_search(
             location=request.location,
             city=request.city,
             state=request.state,
-            max_candidates=request.max_candidates,
-            max_results=request.max_results,
+            max_candidates=candidate_goal,
+            max_results=result_goal,
             max_pages=request.max_pages,
             min_score=request.min_score,
             catalog_path=catalog_path,
@@ -217,6 +231,7 @@ def execute_lookalike_search(
                     (lambda value, stage, message: progress(80 + round(value * 0.18), stage, message))
                     if progress else None
                 ),
+                history_months=request.dedupe_months,
             )
             direct_count, _dropped = export_direct_leads(
                 raw_path, direct_path, verify_mx=request.verify_mx
@@ -256,6 +271,10 @@ def execute_lookalike_search(
         "usage": search.usage,
         "matches": matches,
         "contacts": contacts,
+        "target_type": target_type,
+        "target_count": target_count,
+        "target_achieved": len(search.ranked) if target_type == "companies" else direct_count,
+        "target_met": (len(search.ranked) if target_type == "companies" else direct_count) >= target_count,
         "csv": csv_text,
     }
 
@@ -284,13 +303,17 @@ def execute_scrape(
     seeds: list[dict[str, str]] = []
     notes: list[str] = []
     contacts: list[dict[str, object]] = []
+    target_type = validate_target_type(request.target_type)
+    target_count = request.target_count or request.max_results
+    discovery_goal = target_count if target_type == "companies" else min(1000, max(100, target_count * 6))
 
     if request.query.strip():
         if google_places_configured():
             try:
                 if progress:
                     progress(12, "Discovery", "Searching Google Places")
-                places = search_google_places(request.query, request.location, request.max_results)
+                queries = keyword_discovery_queries(request.query, discovery_goal)
+                places = search_google_places_queries(queries, request.location, discovery_goal)
             except Exception as exc:
                 raise HTTPException(status_code=502, detail=f"Google Places search failed: {exc}") from exc
             seeds.extend(
@@ -334,6 +357,12 @@ def execute_scrape(
             "discovery_count": 0,
             "raw_count": 0,
             "direct_count": 0,
+            "matches": [],
+            "contacts": [],
+            "target_type": target_type,
+            "target_count": target_count,
+            "target_achieved": 0,
+            "target_met": False,
             "csv": "",
             "preview": "No businesses were found. Add GOOGLE_MAPS_API_KEY or paste website URLs.",
         }
@@ -357,6 +386,7 @@ def execute_scrape(
                     (lambda value, stage, message: progress(20 + round(value * 0.78), stage, message))
                     if progress else None
                 ),
+                history_months=request.dedupe_months,
             )
             direct_count, _dropped = export_direct_leads(
                 raw_path, direct_path, verify_mx=request.verify_mx
@@ -376,6 +406,10 @@ def execute_scrape(
         "preview": preview,
         "contacts": contacts,
         "matches": [company_from_contact(contact) for contact in contacts],
+        "target_type": target_type,
+        "target_count": target_count,
+        "target_achieved": len(seeds) if target_type == "companies" else direct_count,
+        "target_met": (len(seeds) if target_type == "companies" else direct_count) >= target_count,
     }
 
 
@@ -493,6 +527,13 @@ def score_grade(score: float) -> str:
     if score >= 65:
         return "B"
     return "C"
+
+
+def validate_target_type(value: str) -> str:
+    clean = value.strip().lower()
+    if clean not in {"companies", "emails"}:
+        raise HTTPException(status_code=400, detail="Target type must be companies or emails.")
+    return clean
 
 
 def filter_contacts(contacts: list[dict[str, object]], request: LookalikeRequest) -> list[dict[str, object]]:

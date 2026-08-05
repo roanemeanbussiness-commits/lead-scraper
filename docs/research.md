@@ -23,6 +23,17 @@ Best near-term improvements:
 | Yelp Fusion / Places APIs | Alternate local-business discovery and categories. | Trial/free limits vary. | Secondary discovery source when Google is sparse. |
 | Hunter API | Domain email discovery and email verification. | Free/test access exists; email finder/verifier consume credits. | Optional high-quality email enrichment, not required for pure scraping. |
 
+## Google API Expansion Review
+
+The useful Google additions are narrower than they first appear:
+
+- [Places Aggregate API](https://developers.google.com/maps/documentation/places-aggregate/overview) is the strongest next Maps integration. It can count matching places inside circles, regions, or polygons and return Place IDs when a filtered area contains 100 or fewer matches. The scraper can use those counts to divide Texas into smaller search areas, then retrieve details through Places API. This is the recommended route for reliable 1,000-company geographic harvesting.
+- [Geocoding API](https://developers.google.com/maps/documentation/geocoding/overview) can convert cities, counties, ZIP codes, and addresses into coordinates and viewports. It does not provide leads itself, but it can create the geographic tiles used by Places Aggregate and Text Search.
+- [Gemini Google Search grounding](https://ai.google.dev/gemini-api/docs/google-search) can optionally search the public web for company leadership and contact evidence that is absent from a company site. It requires a separate Gemini API key and carries model/search quotas and possible usage charges, so it should be an opt-in enrichment provider with citations, caching, and strict evidence checks.
+- Google Business Profile API is not a discovery option. Google's [Business Profile API policies](https://developers.google.com/my-business/content/policies) restrict it to listings the user owns or is authorized to manage and explicitly prohibit lead-generation use.
+
+The current version implements the no-new-secret improvement first: trade-aware multi-query Places harvesting, custom 1-1,000 company/email targets, and best-effort over-collection for email goals. Places Aggregate plus Geocoding should be the next Google adapter after their APIs are enabled in the Google Cloud project.
+
 ## Recommended Roadmap
 
 1. Keep Google Places as the main discovery source.

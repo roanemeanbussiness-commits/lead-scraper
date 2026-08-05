@@ -18,6 +18,7 @@ from .extract import (
     extract_linkedin_profile_urls,
     extract_owner_candidates,
     is_business_email,
+    looks_like_person_name,
     page_text,
 )
 from .history import LeadHistory
@@ -46,12 +47,13 @@ def run_pipeline(
     pages_by_domain: dict[str, list[CrawledPage]] | None = None,
     contact_sink: list[dict[str, object]] | None = None,
     progress: Callable[[int, str, str], None] | None = None,
+    history_months: int | None = None,
 ) -> int:
     if dedupe not in {"none", "email", "domain", "email_or_domain"}:
         raise ValueError("dedupe must be one of: none, email, domain, email_or_domain")
 
     seeds = read_seeds(seeds_path)
-    history = LeadHistory.load(history_path)
+    history = LeadHistory.load(history_path, months=history_months)
     leads: dict[tuple[str, str], Lead] = {}
     contacts: list[dict[str, object]] = []
     report = progress or (lambda _value, _stage, _message: None)
@@ -105,9 +107,12 @@ def process_seed(
     seed_domain = domain_of(seed_url)
     if history.has_seen("", seed_domain, dedupe, seed.place_id or ""):
         cached = history.contact_for_domain(seed_domain)
+        cached_owner = cached.get("owner_name", "")
+        if not looks_like_person_name(cached_owner):
+            cached_owner = ""
         search_terms = " ".join(
             value for value in [
-                cached.get("owner_name") or "owner founder president",
+                cached_owner or "owner founder president",
                 seed.business_name or cached.get("business_name") or seed_domain,
                 seed.city or "",
                 seed.state or "",
@@ -117,7 +122,7 @@ def process_seed(
             "business_name": seed.business_name or cached.get("business_name") or seed_domain,
             "domain": seed_domain,
             "website": seed_url,
-            "owner_name": cached.get("owner_name", ""),
+            "owner_name": cached_owner,
             "owner_role": "",
             "owner_confidence": 0,
             "verified_email": cached.get("verified_email", ""),
@@ -155,7 +160,7 @@ def process_seed(
             industry=seed.category or "",
             location=", ".join(value for value in [seed.city, seed.state] if value),
         )
-        if ai_data.get("owner_name"):
+        if ai_data.get("owner_name") and looks_like_person_name(ai_data["owner_name"]):
             best_owner = OwnerCandidate(
                 name=ai_data["owner_name"],
                 role=ai_data.get("owner_role") or "Owner/Leader",

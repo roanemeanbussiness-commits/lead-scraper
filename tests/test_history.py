@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import sqlite3
 from pathlib import Path
 
 from lead_scraper.history import LeadHistory
@@ -32,6 +33,15 @@ class LeadHistoryTests(unittest.TestCase):
             self.assertTrue(reloaded.has_seen("new@other.example", "example.com", "domain"))
             self.assertTrue(reloaded.has_seen("", "unseen.example", "email", "places/test-123"))
             self.assertEqual("Maria Garcia", reloaded.contact_for_domain("example.com")["owner_name"])
+
+            connection = sqlite3.connect(path)
+            try:
+                connection.execute("UPDATE lead_history SET created_at = '2020-01-01 00:00:00'")
+                connection.commit()
+            finally:
+                connection.close()
+            recent_only = LeadHistory.load(path, months=1)
+            self.assertFalse(recent_only.has_seen("owner@example.com", "example.com", "email"))
 
 
 if __name__ == "__main__":

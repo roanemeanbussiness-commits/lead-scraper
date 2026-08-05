@@ -56,6 +56,14 @@ Version 0.5 addresses high-volume operation and contact discovery:
 - explicit include/exclude industry tags, with software/SaaS excluded by default
 - cached historical contacts so deduplication does not leave repeat result sets blank
 
+Version 0.6 adds custom scale and recency controls:
+
+- company or direct-email target mode with a custom goal from 1 to 1,000
+- automatic over-collection of up to six companies per requested email before enrichment
+- custom candidate pools up to 3,000 and up to 24 semantic Places queries
+- separate 1-120 month windows for company-profile freshness and exported-lead deduplication
+- stricter capitalization checks for deterministic person names and sanitization of cached/AI names
+
 Revenue, funding, traffic, employee-growth, and department-growth filters are intentionally not fabricated. They require licensed sources, reliable registries, or repeated historical observations. LinkedIn people pages are not scraped: official profile access is restricted, so this project only reads LinkedIn URLs a company publishes on its own site and creates user-initiated lookup links. SMTP mailbox probing and email sending remain outside this scraper-only product.
 
 ## Interface Research

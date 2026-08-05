@@ -20,11 +20,11 @@ class LeadHistory:
     contacts_by_domain: dict[str, dict[str, str]] = field(default_factory=dict)
 
     @classmethod
-    def load(cls, path: Path) -> "LeadHistory":
+    def load(cls, path: Path, months: int | None = None) -> "LeadHistory":
         history = cls(path=path)
         if history.uses_sqlite:
             history._initialize_database()
-            history._load_database()
+            history._load_database(months)
         elif path.exists():
             history._load_csv()
         return history
@@ -103,11 +103,14 @@ class LeadHistory:
                 "CREATE INDEX IF NOT EXISTS idx_lead_history_place_id ON lead_history(place_id)"
             )
 
-    def _load_database(self) -> None:
+    def _load_database(self, months: int | None = None) -> None:
+        query = "SELECT email, domain, place_id, business_name, possible_owner, source_url FROM lead_history"
+        params: tuple[str, ...] = ()
+        if months:
+            query += " WHERE created_at >= datetime('now', ?)"
+            params = (f"-{max(1, months) * 30} days",)
         with self._connection() as connection:
-            for email, domain, place_id, business_name, possible_owner, source_url in connection.execute(
-                "SELECT email, domain, place_id, business_name, possible_owner, source_url FROM lead_history"
-            ):
+            for email, domain, place_id, business_name, possible_owner, source_url in connection.execute(query, params):
                 if email:
                     self.emails.add(email.lower())
                 if domain:
