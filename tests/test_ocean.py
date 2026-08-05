@@ -59,9 +59,9 @@ class OceanClientTests(unittest.TestCase):
             saved = store.save_reveal(
                 token,
                 {
-                    "results": [
-                        {"personId": "p1", "email": {"address": "a@apex.com", "status": "verified"}},
-                        {"personId": "p2", "email": {"address": None, "status": "notFound"}},
+                    "emails": [
+                        {"personId": "p1", "address": "a@apex.com", "status": "verified"},
+                        {"personId": "p2", "address": None, "status": "notFound"},
                     ]
                 },
             )

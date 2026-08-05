@@ -188,7 +188,7 @@ class OceanLeadStore:
         return token
 
     def save_reveal(self, token: str, payload: dict[str, object]) -> int:
-        results = payload.get("results") or payload.get("data") or []
+        results = payload.get("emails") or payload.get("results") or payload.get("data") or []
         if not isinstance(results, list):
             return 0
         rows: list[tuple[str, str, str, str]] = []
@@ -201,7 +201,9 @@ class OceanLeadStore:
                 address = str(email_value.get("address") or "").strip().lower()
                 status = str(email_value.get("status") or "notFound").strip()
             else:
-                address = str(email_value or raw.get("emailAddress") or "").strip().lower()
+                address = str(
+                    email_value or raw.get("address") or raw.get("emailAddress") or ""
+                ).strip().lower()
                 status = str(raw.get("status") or ("verified" if address else "notFound")).strip()
             if person_id:
                 rows.append((token, person_id, address, status))
