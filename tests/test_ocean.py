@@ -43,7 +43,12 @@ class OceanClientTests(unittest.TestCase):
 
         self.assertEqual("secret", captured["token"])
         self.assertEqual(100, captured["payload"]["size"])
-        self.assertEqual(["ideal.com"], captured["payload"]["lookalikeDomains"])
+        self.assertEqual(
+            ["ideal.com"], captured["payload"]["companiesFilters"]["lookalikeDomains"]
+        )
+        self.assertEqual(
+            ["seen.com"], captured["payload"]["companiesFilters"]["excludeDomains"]
+        )
         self.assertEqual("apex.com", page.records[0]["domain"])
         self.assertEqual(0.9, page.records[0]["score"])
 

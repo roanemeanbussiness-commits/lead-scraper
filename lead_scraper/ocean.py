@@ -85,14 +85,15 @@ class OceanClient:
         exclude_domains: list[str] | None = None,
     ) -> OceanSearchPage:
         payload: dict[str, object] = {"size": max(1, min(10_000, size))}
-        if companies_filters:
-            payload["companiesFilters"] = companies_filters
+        filters = dict(companies_filters or {})
         if lookalike_domains:
-            payload["lookalikeDomains"] = lookalike_domains
+            filters["lookalikeDomains"] = lookalike_domains
         if include_domains:
-            payload["includeDomains"] = include_domains
+            filters["includeDomains"] = include_domains
         if exclude_domains:
-            payload["excludeDomains"] = exclude_domains
+            filters["excludeDomains"] = exclude_domains
+        if filters:
+            payload["companiesFilters"] = filters
         data = self._request("POST", "/v3/search/companies", payload)
         return OceanSearchPage(
             records=normalize_records(data.get("companies"), "company"),
