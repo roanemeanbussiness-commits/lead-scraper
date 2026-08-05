@@ -9,6 +9,14 @@ primary_region = 'iad'
 [build]
   dockerfile = 'Dockerfile'
 
+[env]
+  LEAD_HISTORY_PATH = '/data/lead_history.db'
+
+[mounts]
+  source = 'lead_data'
+  destination = '/data'
+  initial_size = '1gb'
+
 [http_service]
   internal_port = 8080
   force_https = true

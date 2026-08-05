@@ -9,8 +9,12 @@ Use the dashboard to search Google Maps by business type and location, or provid
 - Crawls public business websites from a seed CSV.
 - Prioritizes pages like `contact`, `about`, `team`, `service`, and `locations`.
 - Extracts emails from visible text and `mailto:` links.
-- Extracts possible owner/founder/CEO names from public website text.
-- Uses OpenAI, when configured, to improve owner name, direct email, and custom opener extraction.
+- Extracts role-specific owner/founder names from visible text, JSON-LD, and Microdata.
+- Records owner role, evidence, source URL, and confidence instead of treating every schema `Person` as an owner.
+- Uses OpenAI, when configured, only when deterministic owner evidence is missing.
+- Decodes Cloudflare-protected and common `[at]` / `[dot]` email formats.
+- Validates public URLs and redirects, respects `robots.txt`, limits response sizes, and retries transient failures.
+- Paginates Google Places Text Search up to its 60-result limit and retains stable Place IDs.
 - Optionally verifies email domains with MX record checks.
 - Filters out common low-value addresses like image assets and placeholders.
 - Scores leads for Texas, San Antonio, and blue-collar trade relevance.
@@ -39,7 +43,7 @@ pip install -r requirements.txt
 python -m lead_scraper scrape --seeds data/sample_seeds.csv --out output/leads.csv
 ```
 
-The scraper keeps memory in `data/lead_history.csv` by default. Future runs skip previously exported emails so the agent does not keep re-scraping the same usable leads.
+The scraper keeps memory in `data/lead_history.db` by default. SQLite tracks exported emails, domains, and Google Place IDs so future runs do not re-scrape the same usable leads. Legacy CSV history paths remain supported.
 
 ## Seed CSV Format
 
@@ -63,7 +67,7 @@ See `docs/research.md` for owner-name extraction improvements and optional free/
 The raw scraper export uses these columns:
 
 ```csv
-email,possible_owner,custom_opener,domain,source_url,business_name,phone,address,city,state,category,blue_collar_signals,texas_signals,confidence
+email,possible_owner,owner_role,owner_evidence,owner_source_url,owner_confidence,custom_opener,place_id,domain,source_url,business_name,phone,address,city,state,category,blue_collar_signals,texas_signals,confidence
 ```
 
 Use `--dedupe email`, `--dedupe domain`, `--dedupe email_or_domain`, or `--dedupe none` to control how aggressively the agent avoids leads it has already exported.
@@ -87,6 +91,8 @@ flyctl deploy -a lead-scraper-rrhtda
 The dashboard at `/` can start a scrape and return a downloadable CSV.
 
 Search by business type and location, or paste one business website URL per line, then download `scraped_leads.csv`. Use the dashboard's MX option when you want stricter email-domain validation.
+
+Fly mounts the `lead_data` volume at `/data`, where the SQLite history survives deploys and Machine restarts.
 
 ## Auto Deploy
 

@@ -9,6 +9,10 @@ from .validation import has_mx_record
 LEAD_EXPORT_FIELDNAMES = [
     "business_name",
     "owner_name",
+    "owner_role",
+    "owner_confidence",
+    "owner_evidence",
+    "owner_source_url",
     "first_name",
     "verified_email",
     "phone",
@@ -17,6 +21,7 @@ LEAD_EXPORT_FIELDNAMES = [
     "industry",
     "custom_opener",
     "source",
+    "place_id",
 ]
 
 
@@ -61,6 +66,10 @@ def clean_direct_leads(
             {
                 "business_name": title_clean(lead.get("business_name") or lead.get("name")),
                 "owner_name": owner_name,
+                "owner_role": clean(lead.get("owner_role")),
+                "owner_confidence": clean(lead.get("owner_confidence")),
+                "owner_evidence": clean(lead.get("owner_evidence")),
+                "owner_source_url": clean(lead.get("owner_source_url")),
                 "first_name": first_name,
                 "verified_email": email,
                 "phone": clean(lead.get("phone")),
@@ -69,6 +78,7 @@ def clean_direct_leads(
                 "industry": title_clean(lead.get("industry") or lead.get("category")),
                 "custom_opener": clean(lead.get("custom_opener")),
                 "source": clean(lead.get("source")) or "Web Scraper",
+                "place_id": clean(lead.get("place_id")),
             }
         )
 

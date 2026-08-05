@@ -5,7 +5,7 @@
 Best near-term improvements:
 
 - Crawl more owner-heavy pages: `/about`, `/about-us`, `/team`, `/our-team`, `/staff`, `/leadership`, `/company`, `/contact`, and service/location pages.
-- Extract from structured data: JSON-LD `Person`, `founder`, `owner`, and `employee` fields.
+- Extract from structured data, but accept only explicit `founder` and `owner` relationships. Generic `Person`, `employee`, and `alumni` records are not owner evidence.
 - Use multiple owner phrase patterns: `owned and operated by Jane Doe`, `founded by Jane Doe`, `Jane Doe, Owner`, and `meet the owner Jane Doe`.
 - Use OpenAI structured outputs for the final pass over the crawled website text, but only accept owner names when the text supports them.
 - Store source URL and confidence signals so questionable owner names can be reviewed instead of blindly trusted.
@@ -32,3 +32,14 @@ Best near-term improvements:
 5. Add caching for Google Places results, website pages, MX checks, and OpenAI responses before scaling.
 6. Add per-domain crawl rate limits and retry/backoff before running large batches.
 
+## Implemented Open-Source Improvements
+
+- [`scrapinghub/extruct`](https://github.com/scrapinghub/extruct) parses JSON-LD and Microdata instead of relying on one custom JSON parser.
+- [`adbar/trafilatura`](https://github.com/adbar/trafilatura) produces cleaner visible page text for owner matching and the optional AI review.
+- Reliability patterns from [`apify/crawlee-python`](https://github.com/apify/crawlee-python) informed bounded responses, retries, prioritized queues, and persistent state. The full browser runtime was not added because the current Fly Machine has 512 MB of memory and most local-service sites do not require browser rendering.
+- Stable Google Place IDs and SQLite provide deterministic deduplication now. [`dedupeio/dedupe`](https://github.com/dedupeio/dedupe) is deferred until the scraper has labeled duplicate/non-duplicate examples; adding a trained entity-resolution engine before then would reduce accuracy.
+- [`gosom/google-maps-scraper`](https://github.com/gosom/google-maps-scraper) remains an optional discovery sidecar. The app keeps the official Places API as its default to avoid shipping a second Go/browser stack and to keep data-source behavior predictable.
+
+## Next Data Sources
+
+The strongest next additions are Texas TDLR license records and San Antonio permit data through their public Socrata APIs. They should be integrated as separate discovery adapters with dataset-specific tests, then joined by normalized business name, phone, address, domain, and Place ID. They should not be treated as proof of an owner unless the source explicitly identifies an owner or responsible party.

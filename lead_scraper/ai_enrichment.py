@@ -5,47 +5,11 @@ import os
 
 import httpx
 
-from .crawler import crawl_site
-from .extract import is_business_email, is_generic_email, page_text
+from .extract import is_business_email, is_generic_email, looks_like_person_name
 
 
 def openai_configured() -> bool:
     return bool(get_openai_api_key())
-
-
-def enrich_direct_rows_with_openai(rows: list[dict[str, str]], max_pages: int = 2) -> list[dict[str, str]]:
-    if not openai_configured() or not rows:
-        return rows
-
-    enriched = []
-    for row in rows:
-        enriched.append(enrich_direct_row(row, max_pages=max_pages))
-    return enriched
-
-
-def enrich_direct_row(row: dict[str, str], max_pages: int) -> dict[str, str]:
-    website = row.get("website") or ""
-    text = ""
-    if website:
-        pages = crawl_site(website, max_pages=max_pages, timeout=10.0)
-        text = " ".join(page_text(page.html) for page in pages)[:5000]
-
-    ai_data = extract_with_openai(
-        business_name=row.get("business_name") or "",
-        website=website,
-        website_text=text,
-        industry=row.get("industry") or "",
-        location=row.get("location") or "",
-    )
-    updated = dict(row)
-    if ai_data.get("owner_name") and not updated.get("owner_name"):
-        updated["owner_name"] = ai_data["owner_name"]
-        updated["first_name"] = ai_data["owner_name"].split()[0]
-    if ai_data.get("email") and not updated.get("verified_email"):
-        updated["verified_email"] = ai_data["email"]
-    if ai_data.get("custom_opener") and not updated.get("custom_opener"):
-        updated["custom_opener"] = ai_data["custom_opener"]
-    return updated
 
 
 def extract_with_openai(
@@ -58,7 +22,7 @@ def extract_with_openai(
     api_key = get_openai_api_key()
     model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     if not api_key:
-        return {"owner_name": "", "email": "", "custom_opener": ""}
+        return empty_enrichment()
 
     prompt = {
         "business_name": business_name,
@@ -67,8 +31,9 @@ def extract_with_openai(
         "location": location,
         "website_text": website_text,
         "task": (
-            "Return JSON with owner_name, email, and custom_opener. Use owner_name only when the text clearly "
-            "names an owner, founder, CEO, president, or principal. For email, prefer direct personal addresses "
+            "Return JSON with owner_name, owner_role, owner_evidence, email, and custom_opener. Use owner_name only "
+            "when the text clearly names an owner, founder, CEO, president, or principal. Copy a short supporting "
+            "phrase into owner_evidence; otherwise leave all owner fields blank. For email, prefer direct personal addresses "
             "and avoid generic inboxes such as info@, support@, sales@, contact@, admin@, hello@, office@, and team@. "
             "The custom_opener should be one short sentence based on the business services or location. Do not invent facts."
         ),
@@ -90,10 +55,12 @@ def extract_with_openai(
                             "additionalProperties": False,
                             "properties": {
                                 "owner_name": {"type": "string"},
+                                "owner_role": {"type": "string"},
+                                "owner_evidence": {"type": "string"},
                                 "email": {"type": "string"},
                                 "custom_opener": {"type": "string"},
                             },
-                            "required": ["owner_name", "email", "custom_opener"],
+                            "required": ["owner_name", "owner_role", "owner_evidence", "email", "custom_opener"],
                         },
                     },
                 },
@@ -112,16 +79,32 @@ def extract_with_openai(
         content = response.json()["choices"][0]["message"]["content"]
         data = json.loads(content)
     except Exception:
-        return {"owner_name": "", "email": "", "custom_opener": ""}
+        return empty_enrichment()
 
     email = str(data.get("email") or "").strip().lower()
     if email and (not is_business_email(email) or is_generic_email(email)):
         email = ""
 
+    owner_name = str(data.get("owner_name") or "").strip()
+    if owner_name and not looks_like_person_name(owner_name):
+        owner_name = ""
+
     return {
-        "owner_name": str(data.get("owner_name") or "").strip(),
+        "owner_name": owner_name,
+        "owner_role": str(data.get("owner_role") or "").strip() if owner_name else "",
+        "owner_evidence": str(data.get("owner_evidence") or "").strip()[:240] if owner_name else "",
         "email": email,
         "custom_opener": str(data.get("custom_opener") or "").strip(),
+    }
+
+
+def empty_enrichment() -> dict[str, str]:
+    return {
+        "owner_name": "",
+        "owner_role": "",
+        "owner_evidence": "",
+        "email": "",
+        "custom_opener": "",
     }
 
 

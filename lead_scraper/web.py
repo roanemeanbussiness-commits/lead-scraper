@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import io
 import os
 import tempfile
 from pathlib import Path
@@ -10,8 +11,9 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from . import __version__
-from .ai_enrichment import enrich_direct_rows_with_openai, openai_configured
-from .exporter import export_direct_leads, read_rows, write_lead_export_csv
+from .ai_enrichment import openai_configured
+from .crawler import UnsafeURL, validate_public_url
+from .exporter import export_direct_leads, read_rows
 from .google_places import google_places_configured, search_google_places
 from .pipeline import run_pipeline
 
@@ -25,8 +27,8 @@ class ScrapeRequest(BaseModel):
     city: str = "San Antonio"
     state: str = "TX"
     category: str = ""
-    max_results: int = 20
-    max_pages: int = 8
+    max_results: int = Field(20, ge=1, le=60)
+    max_pages: int = Field(8, ge=1, le=15)
     dedupe: str = "email"
     verify_mx: bool = False
 
@@ -141,7 +143,7 @@ def dashboard() -> str:
             <div class="form-grid">
               <div><label for="query">Business type</label><input id="query" placeholder="Roofing, HVAC, plumbing"></div>
               <div><label for="location">Search location</label><input id="location" value="San Antonio, TX"></div>
-              <div><label for="max_results">Maps results</label><input id="max_results" type="number" min="1" max="20" value="20"></div>
+              <div><label for="max_results">Maps results</label><input id="max_results" type="number" min="1" max="60" value="20"></div>
             </div>
             <label for="urls">Optional website URLs</label>
             <textarea id="urls" name="urls" placeholder="https://example-roofing.com&#10;https://example-plumbing.com"></textarea>
@@ -178,6 +180,7 @@ def dashboard() -> str:
           <tbody>
             <tr><td>business_name</td><td>Company name from Maps or website seed data.</td></tr>
             <tr><td>owner_name</td><td>Likely owner, founder, CEO, president, or principal when found.</td></tr>
+            <tr><td>owner_role, owner_confidence</td><td>Role and evidence quality for owner-name review.</td></tr>
             <tr><td>first_name</td><td>First-name field for downstream tools.</td></tr>
             <tr><td>verified_email</td><td>Direct non-generic email after filtering.</td></tr>
             <tr><td>phone, website, location, industry</td><td>Lead context and segmentation fields.</td></tr>
@@ -273,6 +276,7 @@ def scrape_from_dashboard(request: ScrapeRequest) -> dict[str, str | int]:
                 seeds.append(
                     {
                         "url": normalize_seed_url(place.website),
+                        "place_id": place.place_id,
                         "business_name": place.business_name,
                         "phone": place.phone,
                         "address": place.address,
@@ -285,9 +289,15 @@ def scrape_from_dashboard(request: ScrapeRequest) -> dict[str, str | int]:
             notes.append("GOOGLE_MAPS_API_KEY is not configured, so only pasted websites were scraped.")
 
     for url in [line.strip() for line in request.urls.splitlines() if line.strip()]:
+        normalized_url = normalize_seed_url(url)
+        try:
+            validate_public_url(normalized_url)
+        except UnsafeURL as exc:
+            raise HTTPException(status_code=400, detail=f"Unsafe or invalid website URL: {exc}") from exc
         seeds.append(
             {
-                "url": normalize_seed_url(url),
+                "url": normalized_url,
+                "place_id": "",
                 "business_name": "",
                 "phone": "",
                 "address": "",
@@ -312,12 +322,12 @@ def scrape_from_dashboard(request: ScrapeRequest) -> dict[str, str | int]:
         seeds_path = tmp_path / "seeds.csv"
         raw_path = tmp_path / "leads.csv"
         direct_path = tmp_path / "scraped_leads.csv"
-        history_path = Path(os.getenv("LEAD_HISTORY_PATH", "data/lead_history.csv"))
+        history_path = Path(os.getenv("LEAD_HISTORY_PATH", "data/lead_history.db"))
 
         with seeds_path.open("w", newline="", encoding="utf-8") as handle:
             writer = csv.DictWriter(
                 handle,
-                fieldnames=["url", "business_name", "phone", "address", "city", "state", "category"],
+                fieldnames=["url", "place_id", "business_name", "phone", "address", "city", "state", "category"],
             )
             writer.writeheader()
             writer.writerows(seeds)
@@ -334,12 +344,6 @@ def scrape_from_dashboard(request: ScrapeRequest) -> dict[str, str | int]:
             direct_count, _dropped = export_direct_leads(raw_path, direct_path, verify_mx=request.verify_mx)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-        direct_rows = read_rows(direct_path)
-        if openai_configured() and direct_rows:
-            direct_rows = enrich_direct_rows_with_openai(direct_rows)
-            write_lead_export_csv(direct_path, direct_rows)
-            direct_count = len(direct_rows)
 
         csv_text = direct_path.read_text(encoding="utf-8")
         preview = csv_text if direct_count <= 5 else preview_csv(direct_path, limit=5)
@@ -376,10 +380,11 @@ def preview_csv(path: Path, limit: int) -> str:
     if not rows:
         return ""
     fieldnames = list(rows[0].keys())
-    lines = [",".join(fieldnames)]
-    for row in rows[:limit]:
-        lines.append(",".join(row.get(field, "") for field in fieldnames))
-    return "\n".join(lines)
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(rows[:limit])
+    return output.getvalue()
 
 
 def dedupe_seed_urls(seeds: list[dict[str, str]]) -> list[dict[str, str]]:
