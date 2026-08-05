@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Callable
 
 import httpx
 
@@ -42,6 +43,8 @@ class LookalikeFilters:
     technologies_any: tuple[str, ...] = ()
     technologies_all: tuple[str, ...] = ()
     technologies_none: tuple[str, ...] = ()
+    tags_any: tuple[str, ...] = ()
+    tags_none: tuple[str, ...] = ()
     require_hiring: bool = False
     ecommerce_only: bool = False
     updated_within_months: int = 12
@@ -71,6 +74,7 @@ def find_lookalikes(
     min_score: float,
     catalog_path: Path,
     filters: LookalikeFilters | None = None,
+    progress: Callable[[int, str, str], None] | None = None,
 ) -> LookalikeRun:
     if not get_openai_api_key():
         raise ValueError("OPENAI_API_KEY is required for like-for-like company embeddings.")
@@ -83,7 +87,9 @@ def find_lookalikes(
         raise ValueError("matching_mode must be precise or broad")
     catalog = CompanyCatalog(catalog_path)
     pages_by_domain: dict[str, list[CrawledPage]] = {}
+    report = progress or (lambda _value, _stage, _message: None)
 
+    report(6, "Ideal profile", "Reading and profiling the reference companies")
     positive_profiles, positive_embeddings, positive_domains, positive_cached = build_reference_set(
         reference_urls, max_pages=max_pages, model=model, pages_by_domain=pages_by_domain, catalog=catalog
     )
@@ -97,7 +103,9 @@ def find_lookalikes(
 
     combined = merge_profiles(positive_profiles)
     queries = discovery_queries(combined)
+    report(16, "Discovery", f"Running {len(queries)} semantic Google Places searches")
     places = search_google_places_queries(queries, location, max_results=max_candidates)
+    report(26, "Discovery", f"Found {len(places)} unique company candidates")
     excluded = positive_domains | negative_domains
 
     existing = {company.domain: company for company in catalog.list(state=state)}
@@ -108,31 +116,39 @@ def find_lookalikes(
             continue
         candidate_seeds.append(seed_from_place(place, city=city, state=state))
 
-    new_companies: list[tuple[Seed, CompanyProfile, list[CrawledPage]]] = []
-    worker_count = min(5, len(candidate_seeds))
+    new_companies: list[tuple[Seed, CompanyProfile]] = []
+    worker_count = min(int(os.getenv("LOOKALIKE_PROFILE_WORKERS", "8")), len(candidate_seeds))
     if worker_count:
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
             futures = {
                 executor.submit(profile_candidate, seed, max_pages): seed
                 for seed in candidate_seeds
             }
+            completed = 0
             for future in as_completed(futures):
+                completed += 1
                 result = future.result()
                 if result is None:
                     continue
-                seed, profile, pages = result
-                pages_by_domain[domain_of(str(seed.url))] = pages
-                new_companies.append((seed, profile, pages))
+                seed, profile = result
+                new_companies.append((seed, profile))
+                report(
+                    26 + round(34 * completed / max(1, len(candidate_seeds))),
+                    "Company profiles",
+                    f"Profiled {completed} of {len(candidate_seeds)} new websites",
+                )
 
     if new_companies:
-        embeddings = embed_texts([profile.canonical_text() for _seed, profile, _pages in new_companies], model)
-        for (seed, profile, _pages), embedding in zip(new_companies, embeddings):
+        report(62, "Company profiles", "Embedding the candidate company fingerprints")
+        embeddings = embed_texts([profile.canonical_text() for _seed, profile in new_companies], model)
+        for (seed, profile), embedding in zip(new_companies, embeddings):
             company = catalog_company(seed, profile, embedding, model)
             catalog.upsert(company)
             existing[company.domain] = company
 
     all_candidates = [company for domain, company in existing.items() if domain not in excluded and company.embedding]
     candidates = [company for company in all_candidates if company_matches_filters(company, filters)]
+    report(70, "Ranking", f"Scoring {len(candidates)} companies against the ideal profile")
     ranked = [
         score_company(
             company, positive_profiles, positive_embeddings, negative_profiles, negative_embeddings,
@@ -144,12 +160,16 @@ def find_lookalikes(
     ranked = [apply_feedback(item, feedback.get(item.company.domain, "")) for item in ranked]
     ranked.sort(key=lambda item: (-item.score, item.company.business_name, item.company.domain))
     reranked = rerank_top(
-        ranked[: max(15, max_results * 2)], positive_profiles, negative_profiles, filters.matching_mode
+        ranked[: min(60, max(15, max_results * 2))],
+        positive_profiles,
+        negative_profiles,
+        filters.matching_mode,
     )
     rerank_by_domain = {item.company.domain: item for item in reranked}
     ranked = [rerank_by_domain.get(item.company.domain, item) for item in ranked]
     ranked.sort(key=lambda item: (-item.score, item.company.business_name, item.company.domain))
     ranked = [item for item in ranked if item.score >= min_score][:max_results]
+    report(78, "Ranking", f"Selected {len(ranked)} best-fit companies for contact enrichment")
 
     return LookalikeRun(
         query_id=query_id,
@@ -165,7 +185,10 @@ def find_lookalikes(
             "websites_profiled": len(new_companies) + len(reference_urls) + len(negative_urls) - positive_cached - negative_cached,
             "reference_cache_hits": positive_cached + negative_cached,
             "embedding_batches": 1 + (1 if new_companies else 0),
-            "estimated_openai_calls": len(new_companies) + len(reference_urls) + len(negative_urls) - positive_cached - negative_cached + 2,
+            "estimated_openai_calls": (
+                (len(new_companies) if candidate_ai_enabled() else 0)
+                + len(reference_urls) + len(negative_urls) - positive_cached - negative_cached + 2
+            ),
         },
     )
 
@@ -204,12 +227,12 @@ def build_reference_set(
     return profiles, embeddings, domains, cache_hits
 
 
-def profile_candidate(seed: Seed, max_pages: int) -> tuple[Seed, CompanyProfile, list[CrawledPage]] | None:
+def profile_candidate(seed: Seed, max_pages: int) -> tuple[Seed, CompanyProfile] | None:
     try:
         pages = crawl_site(str(seed.url), max_pages=max_pages, timeout=12.0)
         if not pages:
             return None
-        return seed, profile_company(seed, pages), pages
+        return seed, profile_company(seed, pages, use_ai=candidate_ai_enabled())
     except Exception:
         return None
 
@@ -418,10 +441,15 @@ def company_matches_filters(company: CatalogCompany, filters: LookalikeFilters) 
     industry_terms = terms([company.category, profile.industry])
     keyword_terms = terms(profile.keywords + profile.services + profile.specialties + [profile.summary])
     technology_terms = {value.lower() for value in profile.technologies}
+    tag_terms = terms([company.category, profile.industry, *profile.services, *profile.keywords])
 
     if filters.industries_any and not industry_terms.intersection(terms(list(filters.industries_any))):
         return False
     if filters.industries_none and industry_terms.intersection(terms(list(filters.industries_none))):
+        return False
+    if filters.tags_any and not tag_terms.intersection(terms(list(filters.tags_any))):
+        return False
+    if filters.tags_none and tag_terms.intersection(terms(list(filters.tags_none))):
         return False
     if filters.keywords_any and not keyword_terms.intersection(terms(list(filters.keywords_any))):
         return False
@@ -503,9 +531,13 @@ def discovery_queries(profile: CompanyProfile) -> list[str]:
         if clean and key not in seen:
             seen.add(key)
             result.append(clean)
-        if len(result) >= 6:
+        if len(result) >= 8:
             break
     return result or ["local service business"]
+
+
+def candidate_ai_enabled() -> bool:
+    return os.getenv("LOOKALIKE_CANDIDATE_AI", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def seed_from_place(place: PlaceLead, city: str, state: str) -> Seed:
@@ -559,4 +591,11 @@ def ranked_seed(item: RankedCompany, query_id: str, reference_domains: list[str]
         "year_founded": profile.year_founded,
         "employee_size": profile.employee_size,
         "headquarters": profile.headquarters,
+        "linkedin_url": profile.linkedin_url,
+        "industry_tags": "; ".join(unique_tags(company.category, profile)),
     }
+
+
+def unique_tags(category: str, profile: CompanyProfile) -> list[str]:
+    values = [category, profile.industry, *profile.services[:4], *profile.keywords[:5]]
+    return list(dict.fromkeys(" ".join(value.split()).strip().lower() for value in values if value.strip()))[:10]

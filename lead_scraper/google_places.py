@@ -96,13 +96,15 @@ def search_google_places(query: str, location: str, max_results: int = 20) -> li
     return leads
 
 
-def search_google_places_queries(queries: list[str], location: str, max_results: int = 40) -> list[PlaceLead]:
+def search_google_places_queries(queries: list[str], location: str, max_results: int = 160) -> list[PlaceLead]:
     """Search several semantic discovery queries and dedupe the shared candidate pool."""
     clean_queries = list(dict.fromkeys(query.strip() for query in queries if query.strip()))
     if not clean_queries or max_results <= 0:
         return []
 
-    per_query = min(20, max(4, math.ceil(max_results / len(clean_queries))))
+    # Text Search currently permits up to 60 results per query. Spread the pool
+    # across semantic phrases so one broad query does not dominate the catalog.
+    per_query = min(60, max(10, math.ceil(max_results * 1.35 / len(clean_queries))))
     results: list[PlaceLead] = []
     seen: set[str] = set()
     for query in clean_queries:

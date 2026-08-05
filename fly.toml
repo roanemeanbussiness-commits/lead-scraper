@@ -13,6 +13,10 @@ primary_region = 'iad'
   LEAD_HISTORY_PATH = '/data/lead_history.db'
   COMPANY_CATALOG_PATH = '/data/company_catalog.db'
   OPENAI_EMBEDDING_MODEL = 'text-embedding-3-small'
+  LOOKALIKE_CANDIDATE_AI = 'false'
+  LOOKALIKE_PROFILE_WORKERS = '8'
+  CONTACT_ENRICHMENT_WORKERS = '6'
+  JOB_OUTPUT_PATH = '/data/jobs'
 
 [mounts]
   source = 'lead_data'

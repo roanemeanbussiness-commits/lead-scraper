@@ -1,3 +1,3 @@
 """Lead scraping tools for 8-Thon Intelligence."""
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"

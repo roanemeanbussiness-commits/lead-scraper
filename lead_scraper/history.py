@@ -17,6 +17,7 @@ class LeadHistory:
     emails: set[str] = field(default_factory=set)
     domains: set[str] = field(default_factory=set)
     place_ids: set[str] = field(default_factory=set)
+    contacts_by_domain: dict[str, dict[str, str]] = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path) -> "LeadHistory":
@@ -54,6 +55,15 @@ class LeadHistory:
             self.domains.add(lead.domain.lower())
             if lead.place_id:
                 self.place_ids.add(lead.place_id)
+            self.contacts_by_domain[lead.domain.lower()] = {
+                "verified_email": lead.email,
+                "owner_name": lead.possible_owner or "",
+                "business_name": lead.business_name or "",
+                "source_url": lead.source_url,
+            }
+
+    def contact_for_domain(self, domain: str) -> dict[str, str]:
+        return dict(self.contacts_by_domain.get(domain.lower(), {}))
 
     def _connect(self) -> sqlite3.Connection:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -95,8 +105,8 @@ class LeadHistory:
 
     def _load_database(self) -> None:
         with self._connection() as connection:
-            for email, domain, place_id in connection.execute(
-                "SELECT email, domain, place_id FROM lead_history"
+            for email, domain, place_id, business_name, possible_owner, source_url in connection.execute(
+                "SELECT email, domain, place_id, business_name, possible_owner, source_url FROM lead_history"
             ):
                 if email:
                     self.emails.add(email.lower())
@@ -104,6 +114,16 @@ class LeadHistory:
                     self.domains.add(domain.lower())
                 if place_id:
                     self.place_ids.add(place_id)
+                if domain:
+                    self.contacts_by_domain.setdefault(
+                        domain.lower(),
+                        {
+                            "verified_email": email or "",
+                            "owner_name": possible_owner or "",
+                            "business_name": business_name or "",
+                            "source_url": source_url or "",
+                        },
+                    )
 
     def _append_database(self, leads: list[Lead]) -> None:
         rows = [
@@ -142,6 +162,16 @@ class LeadHistory:
                     self.domains.add(domain_of(website))
                 if place_id:
                     self.place_ids.add(place_id)
+                if domain:
+                    self.contacts_by_domain.setdefault(
+                        domain.lower(),
+                        {
+                            "verified_email": email,
+                            "owner_name": (row.get("possible_owner") or row.get("owner_name") or "").strip(),
+                            "business_name": (row.get("business_name") or "").strip(),
+                            "source_url": (row.get("source_url") or website).strip(),
+                        },
+                    )
 
     def _append_csv(self, leads: list[Lead]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

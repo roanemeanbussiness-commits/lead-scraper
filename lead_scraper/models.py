@@ -28,6 +28,8 @@ class Seed(BaseModel):
     year_founded: str | None = None
     employee_size: str | None = None
     headquarters: str | None = None
+    linkedin_url: str | None = None
+    industry_tags: str | None = None
 
 
 class Lead(BaseModel):
@@ -66,3 +68,7 @@ class Lead(BaseModel):
     year_founded: str | None = None
     employee_size: str | None = None
     headquarters: str | None = None
+    linkedin_url: str | None = None
+    linkedin_profile_url: str | None = None
+    decision_maker_search_url: str | None = None
+    industry_tags: str | None = None

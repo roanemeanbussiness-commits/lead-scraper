@@ -2,10 +2,26 @@ from __future__ import annotations
 
 import unittest
 
-from lead_scraper.extract import extract_emails, extract_owner_candidates, extract_possible_owners
+from lead_scraper.extract import (
+    extract_emails,
+    extract_linkedin_profile_urls,
+    extract_owner_candidates,
+    extract_possible_owners,
+)
 
 
 class OwnerExtractionTests(unittest.TestCase):
+    def test_extracts_personal_linkedin_links_published_by_company_site(self) -> None:
+        html = (
+            '<a href="https://www.linkedin.com/in/maria-garcia/">Maria</a>'
+            '<a href="https://www.linkedin.com/company/roof-co/">Company</a>'
+        )
+
+        self.assertEqual(
+            ["https://www.linkedin.com/in/maria-garcia"],
+            extract_linkedin_profile_urls(html),
+        )
+
     def test_extracts_owner_phrases_from_visible_text(self) -> None:
         html = """
         <main>
@@ -33,6 +49,18 @@ class OwnerExtractionTests(unittest.TestCase):
         """
 
         self.assertIn("Sarah Miller", extract_possible_owners(html))
+
+    def test_extracts_decision_maker_job_title_from_schema_person(self) -> None:
+        html = """
+        <script type="application/ld+json">
+        {"@type":"Person","name":"Daniel Ortiz","jobTitle":"General Manager"}
+        </script>
+        """
+
+        candidates = extract_owner_candidates(html, "https://example.com/team")
+
+        self.assertEqual("Daniel Ortiz", candidates[0].name)
+        self.assertEqual("General Manager", candidates[0].role)
 
     def test_rejects_obvious_non_people(self) -> None:
         html = "<p>Owner: The Business Team</p><p>Our Services, Owner</p>"

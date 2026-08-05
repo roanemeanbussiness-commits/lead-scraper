@@ -38,6 +38,10 @@ LEAD_EXPORT_FIELDNAMES = [
     "year_founded",
     "employee_size",
     "headquarters",
+    "linkedin_url",
+    "linkedin_profile_url",
+    "decision_maker_search_url",
+    "industry_tags",
 ]
 
 
@@ -111,6 +115,10 @@ def clean_direct_leads(
                 "year_founded": clean(lead.get("year_founded")),
                 "employee_size": clean(lead.get("employee_size")),
                 "headquarters": clean(lead.get("headquarters")),
+                "linkedin_url": clean(lead.get("linkedin_url")),
+                "linkedin_profile_url": clean(lead.get("linkedin_profile_url")),
+                "decision_maker_search_url": clean(lead.get("decision_maker_search_url")),
+                "industry_tags": clean(lead.get("industry_tags")),
             }
         )
 

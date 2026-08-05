@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 
 from bs4 import BeautifulSoup
 
@@ -22,6 +22,21 @@ except ImportError:  # BeautifulSoup remains a reliable fallback.
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 NAME_RE = r"([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){1,2})"
 OWNER_PATTERNS = [
+    ("Founder", 93, re.compile(
+        rf"(?:founder|co-founder)\s*(?:[:\-]|is|,)?\s*{NAME_RE}", re.IGNORECASE,
+    )),
+    ("CEO", 92, re.compile(
+        rf"(?:chief executive officer|ceo)\s*(?:[:\-]|is|,)?\s*{NAME_RE}", re.IGNORECASE,
+    )),
+    ("President", 92, re.compile(
+        rf"president\s*(?:[:\-]|is|,)?\s*{NAME_RE}", re.IGNORECASE,
+    )),
+    ("General Manager", 89, re.compile(
+        rf"general manager\s*(?:[:\-]|is|,)?\s*{NAME_RE}", re.IGNORECASE,
+    )),
+    ("Operations Manager", 87, re.compile(
+        rf"operations manager\s*(?:[:\-]|is|,)?\s*{NAME_RE}", re.IGNORECASE,
+    )),
     ("Owner", 88, re.compile(
         rf"(?:owner|founder|co-founder|ceo|president|principal|operator|general manager)"
         rf"\s*(?:[:\-]|is|,)?\s*{NAME_RE}",
@@ -99,6 +114,21 @@ def extract_emails(html: str) -> set[str]:
     decoded_html = re.sub(r"\s*(?:\[|\()\s*dot\s*(?:\]|\))\s*", ".", decoded_html, flags=re.IGNORECASE)
     candidates.update(EMAIL_RE.findall(decoded_html))
     return {email.lower() for email in candidates if is_business_email(email)}
+
+
+def extract_linkedin_profile_urls(html: str) -> list[str]:
+    """Return public personal LinkedIn links explicitly published by the business website."""
+    soup = BeautifulSoup(html, "html.parser")
+    profiles: list[str] = []
+    for link in soup.select("a[href]"):
+        href = unquote(link.get("href", "")).strip()
+        parsed = urlparse(href)
+        host = (parsed.hostname or "").lower().removeprefix("www.")
+        if host == "linkedin.com" and parsed.path.lower().startswith("/in/"):
+            clean = f"https://www.linkedin.com{parsed.path.rstrip('/')}"
+            if clean not in profiles:
+                profiles.append(clean)
+    return profiles[:10]
 
 
 def extract_possible_owners(html: str) -> set[str]:
@@ -182,6 +212,26 @@ def owner_candidates_from_schema_node(node: object, source_url: str = "") -> lis
                 candidates.append(
                     OwnerCandidate(cleaned, role, f"schema.org {key}", source_url, confidence)
                 )
+
+    node_type = node.get("@type")
+    node_types = {str(value).lower() for value in (node_type if isinstance(node_type, list) else [node_type])}
+    job_title = str(node.get("jobTitle") or node.get("job_title") or "").strip()
+    allowed_title = next(
+        (
+            title for title in (
+                "owner", "founder", "co-founder", "ceo", "chief executive officer", "president",
+                "principal", "general manager", "operations manager",
+            )
+            if title in job_title.lower()
+        ),
+        "",
+    )
+    if "person" in node_types and allowed_title:
+        cleaned = clean_owner_name(str(node.get("name") or ""))
+        if looks_like_person_name(cleaned):
+            candidates.append(
+                OwnerCandidate(cleaned, job_title.title(), "schema.org Person jobTitle", source_url, 94)
+            )
 
     graph = node.get("@graph")
     if graph:

@@ -38,6 +38,7 @@ class CompanyProfile(BaseModel):
     headquarters: str = ""
     technologies: list[str] = Field(default_factory=list)
     social_channels: list[str] = Field(default_factory=list)
+    linkedin_url: str = ""
     hiring_departments: list[str] = Field(default_factory=list)
     ecommerce: bool = False
     careers_active: bool = False
@@ -64,12 +65,12 @@ class CompanyProfile(BaseModel):
         return "\n".join(part for part in parts if not part.endswith(": "))
 
 
-def profile_company(seed: Seed, pages: list[CrawledPage]) -> CompanyProfile:
+def profile_company(seed: Seed, pages: list[CrawledPage], use_ai: bool = True) -> CompanyProfile:
     evidence = website_evidence(pages)
     if not evidence:
         return fallback_profile(seed, "", pages)
-    if not get_openai_api_key():
-        return fallback_profile(seed, evidence)
+    if not use_ai or not get_openai_api_key():
+        return fallback_profile(seed, evidence, pages)
 
     observed = detect_public_signals(pages)
     payload = {
@@ -116,6 +117,7 @@ def profile_company(seed: Seed, pages: list[CrawledPage]) -> CompanyProfile:
                                 "headquarters": {"type": "string"},
                                 "technologies": {"type": "array", "items": {"type": "string"}},
                                 "social_channels": {"type": "array", "items": {"type": "string"}},
+                                "linkedin_url": {"type": "string"},
                                 "hiring_departments": {"type": "array", "items": {"type": "string"}},
                                 "ecommerce": {"type": "boolean"},
                                 "careers_active": {"type": "boolean"},
@@ -124,7 +126,7 @@ def profile_company(seed: Seed, pages: list[CrawledPage]) -> CompanyProfile:
                                 "summary", "industry", "services", "customer_types", "business_model",
                                 "specialties", "service_area", "keywords", "discovery_queries",
                                 "year_founded", "employee_size", "headquarters", "technologies",
-                                "social_channels", "hiring_departments", "ecommerce", "careers_active",
+                                "social_channels", "linkedin_url", "hiring_departments", "ecommerce", "careers_active",
                             ],
                         },
                     },
@@ -141,6 +143,7 @@ def profile_company(seed: Seed, pages: list[CrawledPage]) -> CompanyProfile:
         profile = CompanyProfile.model_validate_json(response.json()["choices"][0]["message"]["content"])
         profile.technologies = unique_phrases(profile.technologies + observed["technologies"], limit=24)
         profile.social_channels = unique_phrases(profile.social_channels + observed["social_channels"], limit=12)
+        profile.linkedin_url = observed["linkedin_url"] or profile.linkedin_url
         profile.ecommerce = profile.ecommerce or observed["ecommerce"]
         profile.careers_active = profile.careers_active or observed["careers_active"]
         return normalize_profile(profile)
@@ -179,6 +182,7 @@ def fallback_profile(seed: Seed, evidence: str, pages: list[CrawledPage] | None 
         discovery_queries=[query],
         technologies=observed["technologies"],
         social_channels=observed["social_channels"],
+        linkedin_url=observed["linkedin_url"],
         ecommerce=observed["ecommerce"],
         careers_active=observed["careers_active"],
     )
@@ -280,11 +284,14 @@ def detect_public_signals(pages: list[CrawledPage]) -> dict[str, object]:
         if any(signature in html for signature in signatures)
     ]
     social_channels: list[str] = []
+    linkedin_urls: list[str] = []
     for match in re.findall(r"https?://[^\s\"'<>]+", html):
         host = (urlparse(match).hostname or "").lower().removeprefix("www.")
         for social_host, label in SOCIAL_HOSTS.items():
             if host == social_host or host.endswith(f".{social_host}"):
                 social_channels.append(label)
+                if label == "linkedin" and "/company/" in match:
+                    linkedin_urls.append(match.rstrip("/.,);"))
     ecommerce = any(signal in html for signal in ("add to cart", "shopping cart", "checkout", "product-price"))
     careers_active = any(
         signal in html
@@ -293,6 +300,7 @@ def detect_public_signals(pages: list[CrawledPage]) -> dict[str, object]:
     return {
         "technologies": unique_phrases(technologies, limit=24),
         "social_channels": unique_phrases(social_channels, limit=12),
+        "linkedin_url": linkedin_urls[0] if linkedin_urls else "",
         "ecommerce": ecommerce,
         "careers_active": careers_active,
     }

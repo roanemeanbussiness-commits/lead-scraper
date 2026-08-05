@@ -1,15 +1,25 @@
 from __future__ import annotations
 
 import csv
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
+from urllib.parse import quote_plus
 
 from pydantic import ValidationError
 
 from .ai_enrichment import empty_enrichment, extract_with_openai, openai_configured
 from .crawler import CrawledPage, UnsafeURL, crawl_site, domain_of, validate_public_url
-from .extract import OwnerCandidate, extract_emails, extract_owner_candidates, is_business_email, page_text
+from .extract import (
+    OwnerCandidate,
+    extract_emails,
+    extract_linkedin_profile_urls,
+    extract_owner_candidates,
+    is_business_email,
+    page_text,
+)
 from .history import LeadHistory
 from .models import Lead, Seed
 from .scoring import score_lead
@@ -34,6 +44,8 @@ def run_pipeline(
     max_pages: int,
     timeout: float,
     pages_by_domain: dict[str, list[CrawledPage]] | None = None,
+    contact_sink: list[dict[str, object]] | None = None,
+    progress: Callable[[int, str, str], None] | None = None,
 ) -> int:
     if dedupe not in {"none", "email", "domain", "email_or_domain"}:
         raise ValueError("dedupe must be one of: none, email, domain, email_or_domain")
@@ -41,56 +53,163 @@ def run_pipeline(
     seeds = read_seeds(seeds_path)
     history = LeadHistory.load(history_path)
     leads: dict[tuple[str, str], Lead] = {}
+    contacts: list[dict[str, object]] = []
+    report = progress or (lambda _value, _stage, _message: None)
+    worker_count = min(int(os.getenv("CONTACT_ENRICHMENT_WORKERS", "6")), len(seeds))
 
-    for seed in seeds:
-        seed_url = str(seed.url)
-        seed_domain = domain_of(seed_url)
-        if history.has_seen("", seed_domain, dedupe, seed.place_id or ""):
-            continue
-
-        try:
-            validate_public_url(seed_url)
-            cached_pages = (pages_by_domain or {}).get(seed_domain)
-            pages = cached_pages if cached_pages is not None else crawl_site(
-                seed_url, max_pages=max_pages, timeout=timeout
-            )
-        except UnsafeURL:
-            continue
-        analyses = [analyze_page(seed, page) for page in pages]
-        owners = [owner for analysis in analyses for owner in analysis.owners]
-        best_owner = max(owners, key=lambda item: item.confidence, default=None)
-
-        combined_text = build_ai_evidence(analyses)
-        ai_data = empty_enrichment()
-        if openai_configured() and combined_text and best_owner is None:
-            ai_data = extract_with_openai(
-                business_name=seed.business_name or "",
-                website=seed_url,
-                website_text=combined_text,
-                industry=seed.category or "",
-                location=", ".join(value for value in [seed.city, seed.state] if value),
-            )
-            if ai_data.get("owner_name"):
-                best_owner = OwnerCandidate(
-                    name=ai_data["owner_name"],
-                    role=ai_data.get("owner_role") or "Owner/Leader",
-                    evidence=ai_data.get("owner_evidence") or "OpenAI review of public website text",
-                    source_url=seed_url,
-                    confidence=72,
+    if worker_count:
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            futures = {
+                executor.submit(process_seed, seed, history, dedupe, max_pages, timeout, pages_by_domain): seed
+                for seed in seeds
+            }
+            completed = 0
+            for future in as_completed(futures):
+                completed += 1
+                seed_leads, contact = future.result()
+                for candidate in seed_leads:
+                    key = (candidate.email, candidate.domain)
+                    existing = leads.get(key)
+                    if existing is None or candidate.confidence > existing.confidence:
+                        leads[key] = candidate
+                if contact:
+                    contacts.append(contact)
+                report(
+                    round(100 * completed / max(1, len(seeds))),
+                    "Decision makers",
+                    f"Enriched {completed} of {len(seeds)} company websites",
                 )
 
-        ai_email = ai_data.get("email", "")
-        if ai_email and is_business_email(ai_email) and analyses:
-            analyses[0].emails.add(ai_email)
+    exported = list(leads.values())
+    write_leads(out_path, exported)
+    history.append(exported)
+    if contact_sink is not None:
+        contact_sink.extend(
+            sorted(
+                contacts,
+                key=lambda item: (not bool(item["owner_name"]), str(item["business_name"])),
+            )
+        )
+    return len(exported)
 
-        for analysis in analyses:
-            for email in analysis.emails:
-                domain = seed_domain or domain_of(analysis.page.url)
-                if history.has_seen(email, domain, dedupe, seed.place_id or ""):
-                    continue
 
-                key = (email, domain)
-                candidate = Lead(
+def process_seed(
+    seed: Seed,
+    history: LeadHistory,
+    dedupe: str,
+    max_pages: int,
+    timeout: float,
+    pages_by_domain: dict[str, list[CrawledPage]] | None,
+) -> tuple[list[Lead], dict[str, object] | None]:
+    seed_url = str(seed.url)
+    seed_domain = domain_of(seed_url)
+    if history.has_seen("", seed_domain, dedupe, seed.place_id or ""):
+        cached = history.contact_for_domain(seed_domain)
+        search_terms = " ".join(
+            value for value in [
+                cached.get("owner_name") or "owner founder president",
+                seed.business_name or cached.get("business_name") or seed_domain,
+                seed.city or "",
+                seed.state or "",
+            ] if value
+        )
+        return [], {
+            "business_name": seed.business_name or cached.get("business_name") or seed_domain,
+            "domain": seed_domain,
+            "website": seed_url,
+            "owner_name": cached.get("owner_name", ""),
+            "owner_role": "",
+            "owner_confidence": 0,
+            "verified_email": cached.get("verified_email", ""),
+            "phone": seed.phone or "",
+            "location": ", ".join(value for value in [seed.city, seed.state] if value),
+            "linkedin_url": seed.linkedin_url or "",
+            "linkedin_profile_url": "",
+            "decision_maker_search_url": (
+                "https://www.linkedin.com/search/results/people/?keywords=" + quote_plus(search_terms)
+            ),
+            "industry_tags": seed.industry_tags or seed.category or "",
+            "source_url": cached.get("source_url", seed_url),
+            "cached": True,
+        }
+
+    try:
+        validate_public_url(seed_url)
+        cached_pages = (pages_by_domain or {}).get(seed_domain)
+        pages = cached_pages if cached_pages is not None else crawl_site(
+            seed_url, max_pages=max_pages, timeout=timeout
+        )
+    except UnsafeURL:
+        return [], None
+    analyses = [analyze_page(seed, page) for page in pages]
+    owners = [owner for analysis in analyses for owner in analysis.owners]
+    best_owner = max(owners, key=lambda item: item.confidence, default=None)
+
+    combined_text = build_ai_evidence(analyses)
+    ai_data = empty_enrichment()
+    if openai_configured() and combined_text and best_owner is None:
+        ai_data = extract_with_openai(
+            business_name=seed.business_name or "",
+            website=seed_url,
+            website_text=combined_text,
+            industry=seed.category or "",
+            location=", ".join(value for value in [seed.city, seed.state] if value),
+        )
+        if ai_data.get("owner_name"):
+            best_owner = OwnerCandidate(
+                name=ai_data["owner_name"],
+                role=ai_data.get("owner_role") or "Owner/Leader",
+                evidence=ai_data.get("owner_evidence") or "OpenAI review of public website text",
+                source_url=seed_url,
+                confidence=72,
+            )
+
+    ai_email = ai_data.get("email", "")
+    if ai_email and is_business_email(ai_email) and analyses:
+        analyses[0].emails.add(ai_email)
+
+    linkedin_profiles = list(
+        dict.fromkeys(
+            profile
+            for analysis in analyses
+            for profile in extract_linkedin_profile_urls(analysis.page.html)
+        )
+    )
+    available_emails = sorted({email for analysis in analyses for email in analysis.emails})
+    search_terms = " ".join(
+        value for value in [
+            best_owner.name if best_owner else "owner founder president",
+            seed.business_name or seed_domain,
+            seed.city or "",
+            seed.state or "",
+        ] if value
+    )
+    linkedin_search_url = f"https://www.linkedin.com/search/results/people/?keywords={quote_plus(search_terms)}"
+    contact = {
+        "business_name": seed.business_name or seed_domain,
+        "domain": seed_domain,
+        "website": seed_url,
+        "owner_name": best_owner.name if best_owner else "",
+        "owner_role": best_owner.role if best_owner else "",
+        "owner_confidence": best_owner.confidence if best_owner else 0,
+        "verified_email": available_emails[0] if available_emails else "",
+        "phone": seed.phone or "",
+        "location": ", ".join(value for value in [seed.city, seed.state] if value),
+        "linkedin_url": seed.linkedin_url or "",
+        "linkedin_profile_url": linkedin_profiles[0] if linkedin_profiles else "",
+        "decision_maker_search_url": linkedin_search_url,
+        "industry_tags": seed.industry_tags or seed.category or "",
+        "source_url": best_owner.source_url if best_owner else seed_url,
+    }
+
+    seed_leads: list[Lead] = []
+    for analysis in analyses:
+        for email in analysis.emails:
+            domain = seed_domain or domain_of(analysis.page.url)
+            if history.has_seen(email, domain, dedupe, seed.place_id or ""):
+                continue
+            seed_leads.append(
+                Lead(
                     email=email,
                     possible_owner=best_owner.name if best_owner else None,
                     owner_role=best_owner.role if best_owner else None,
@@ -126,15 +245,13 @@ def run_pipeline(
                     year_founded=seed.year_founded,
                     employee_size=seed.employee_size,
                     headquarters=seed.headquarters,
+                    linkedin_url=seed.linkedin_url,
+                    linkedin_profile_url=linkedin_profiles[0] if linkedin_profiles else None,
+                    decision_maker_search_url=linkedin_search_url,
+                    industry_tags=seed.industry_tags,
                 )
-                existing = leads.get(key)
-                if existing is None or candidate.confidence > existing.confidence:
-                    leads[key] = candidate
-
-    exported = list(leads.values())
-    write_leads(out_path, exported)
-    history.append(exported)
-    return len(exported)
+            )
+    return seed_leads, contact
 
 
 def analyze_page(seed: Seed, page: CrawledPage) -> PageAnalysis:
@@ -194,6 +311,8 @@ def read_seeds(path: Path) -> list[Seed]:
                         year_founded=row.get("year_founded") or None,
                         employee_size=row.get("employee_size") or None,
                         headquarters=row.get("headquarters") or None,
+                        linkedin_url=row.get("linkedin_url") or None,
+                        industry_tags=row.get("industry_tags") or None,
                     )
                 )
             except ValidationError as exc:

@@ -15,7 +15,8 @@ class PipelineTests(unittest.TestCase):
         pages = [
             CrawledPage(
                 "https://roofco.com/about",
-                "<p>Owned and operated by Maria Garcia since 2012.</p>",
+                '<p>Owned and operated by Maria Garcia since 2012.</p>'
+                '<a href="https://www.linkedin.com/in/maria-garcia/">Maria on LinkedIn</a>',
             ),
             CrawledPage(
                 "https://roofco.com/contact",
@@ -32,6 +33,7 @@ class PipelineTests(unittest.TestCase):
                 encoding="utf-8",
             )
             output = root / "leads.csv"
+            contacts = []
 
             with (
                 patch("lead_scraper.pipeline.validate_public_url", side_effect=lambda value: value),
@@ -45,6 +47,7 @@ class PipelineTests(unittest.TestCase):
                     dedupe="email",
                     max_pages=8,
                     timeout=1,
+                    contact_sink=contacts,
                 )
 
             with output.open(newline="", encoding="utf-8") as handle:
@@ -54,6 +57,11 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual("Maria Garcia", rows[0]["possible_owner"])
             self.assertEqual("https://roofco.com/about", rows[0]["owner_source_url"])
             self.assertEqual("places/roofco", rows[0]["place_id"])
+            self.assertEqual("Maria Garcia", contacts[0]["owner_name"])
+            self.assertEqual(
+                "https://www.linkedin.com/in/maria-garcia",
+                contacts[0]["linkedin_profile_url"],
+            )
 
 
 if __name__ == "__main__":

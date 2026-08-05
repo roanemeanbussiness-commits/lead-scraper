@@ -185,7 +185,7 @@ class LookalikeFlowTests(unittest.TestCase):
                     return_value=([ideal], [[1.0, 0.0]], {"ideal.example"}, 0),
                 ),
                 patch("lead_scraper.lookalike.search_google_places_queries", return_value=[place]),
-                patch("lead_scraper.lookalike.profile_candidate", return_value=(seed, candidate, pages)),
+                patch("lead_scraper.lookalike.profile_candidate", return_value=(seed, candidate)),
                 patch("lead_scraper.lookalike.embed_texts", return_value=[[1.0, 0.0]]),
                 patch("lead_scraper.lookalike.rerank_top", side_effect=lambda ranked, *_args: ranked),
             ):
@@ -205,7 +205,7 @@ class LookalikeFlowTests(unittest.TestCase):
         self.assertEqual(1, len(run.ranked))
         self.assertEqual("candidate.example", run.ranked[0].company.domain)
         self.assertGreater(run.ranked[0].score, 80)
-        self.assertIn("candidate.example", run.pages_by_domain)
+        self.assertEqual({}, run.pages_by_domain)
 
 
 if __name__ == "__main__":

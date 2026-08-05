@@ -20,6 +20,8 @@ class LeadHistoryTests(unittest.TestCase):
                         domain="example.com",
                         source_url="https://example.com/contact",
                         place_id="places/test-123",
+                        business_name="Example Co",
+                        possible_owner="Maria Garcia",
                     )
                 ]
             )
@@ -29,6 +31,7 @@ class LeadHistoryTests(unittest.TestCase):
             self.assertTrue(reloaded.has_seen("owner@example.com", "new.example", "email"))
             self.assertTrue(reloaded.has_seen("new@other.example", "example.com", "domain"))
             self.assertTrue(reloaded.has_seen("", "unseen.example", "email", "places/test-123"))
+            self.assertEqual("Maria Garcia", reloaded.contact_for_domain("example.com")["owner_name"])
 
 
 if __name__ == "__main__":

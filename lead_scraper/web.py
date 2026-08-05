@@ -6,9 +6,10 @@ import os
 import tempfile
 from pathlib import Path
 from threading import Lock
+from typing import Callable
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
 from . import __version__
@@ -19,10 +20,13 @@ from .dashboard import render_dashboard
 from .exporter import export_direct_leads, read_rows
 from .google_places import google_places_configured, search_google_places
 from .lookalike import LookalikeFilters, find_lookalikes, ranked_seed
+from .jobs import JobManager
 from .pipeline import run_pipeline
 
 app = FastAPI(title="8-Thon Intelligence Lead Scraper")
 LOOKALIKE_RUN_LOCK = Lock()
+DEFAULT_JOB_OUTPUT = "/data/jobs" if os.name != "nt" and Path("/data").exists() else "data/jobs"
+JOB_MANAGER = JobManager(Path(os.getenv("JOB_OUTPUT_PATH", DEFAULT_JOB_OUTPUT)))
 
 
 class ScrapeRequest(BaseModel):
@@ -44,8 +48,8 @@ class LookalikeRequest(BaseModel):
     location: str = "San Antonio, TX"
     city: str = "San Antonio"
     state: str = "TX"
-    max_candidates: int = Field(24, ge=4, le=60)
-    max_results: int = Field(10, ge=1, le=30)
+    max_candidates: int = Field(160, ge=10, le=300)
+    max_results: int = Field(50, ge=1, le=100)
     max_pages: int = Field(6, ge=1, le=12)
     min_score: float = Field(45.0, ge=0, le=100)
     dedupe: str = "email"
@@ -59,8 +63,13 @@ class LookalikeRequest(BaseModel):
     technologies_any: str = ""
     technologies_all: str = ""
     technologies_none: str = ""
+    tags_any: str = ""
+    tags_none: str = "software, saas"
     require_hiring: bool = False
     ecommerce_only: bool = False
+    require_owner: bool = False
+    require_contact_email: bool = False
+    decision_maker_roles: str = "owner, founder, president, ceo, principal, general manager"
     updated_within_months: int = Field(12, ge=1, le=60)
 
 
@@ -79,6 +88,56 @@ def dashboard() -> str:
     )
 
 
+@app.post("/api/jobs/lookalikes", status_code=202)
+def start_lookalike_job(request: LookalikeRequest) -> dict[str, object]:
+    try:
+        job = JOB_MANAGER.submit(
+            "lookalikes",
+            lambda progress: execute_locked_lookalike_search(request, progress),
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    return job.snapshot()
+
+
+def execute_locked_lookalike_search(
+    request: LookalikeRequest,
+    progress: Callable[[int, str, str], None],
+) -> dict[str, object]:
+    if not LOOKALIKE_RUN_LOCK.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="A lookalike search is already running.")
+    try:
+        return execute_lookalike_search(request, progress=progress)
+    finally:
+        LOOKALIKE_RUN_LOCK.release()
+
+
+@app.post("/api/jobs/scrape", status_code=202)
+def start_scrape_job(request: ScrapeRequest) -> dict[str, object]:
+    try:
+        job = JOB_MANAGER.submit("keyword", lambda progress: execute_scrape(request, progress=progress))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    return job.snapshot()
+
+
+@app.get("/api/jobs/{job_id}")
+def get_job(job_id: str) -> dict[str, object]:
+    job = JOB_MANAGER.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Search job not found.")
+    return job.snapshot()
+
+
+@app.get("/api/jobs/{job_id}/download")
+def download_job(job_id: str):
+    job = JOB_MANAGER.get(job_id)
+    if not job or not job.download_path or not job.download_path.exists():
+        raise HTTPException(status_code=404, detail="The CSV is not ready.")
+    filename = "lookalike_leads.csv" if job.kind == "lookalikes" else "scraped_leads.csv"
+    return FileResponse(job.download_path, media_type="text/csv", filename=filename)
+
+
 @app.post("/api/lookalikes")
 def lookalikes_from_dashboard(request: LookalikeRequest) -> dict[str, object]:
     if not LOOKALIKE_RUN_LOCK.acquire(blocking=False):
@@ -89,7 +148,10 @@ def lookalikes_from_dashboard(request: LookalikeRequest) -> dict[str, object]:
         LOOKALIKE_RUN_LOCK.release()
 
 
-def execute_lookalike_search(request: LookalikeRequest) -> dict[str, object]:
+def execute_lookalike_search(
+    request: LookalikeRequest,
+    progress: Callable[[int, str, str], None] | None = None,
+) -> dict[str, object]:
     reference_urls = parse_public_urls(request.reference_urls)
     negative_urls = parse_public_urls(request.negative_urls)
     reference_domains = [domain_of(url) for url in reference_urls]
@@ -106,6 +168,8 @@ def execute_lookalike_search(request: LookalikeRequest) -> dict[str, object]:
             technologies_any=tuple(parse_filter_values(request.technologies_any)),
             technologies_all=tuple(parse_filter_values(request.technologies_all)),
             technologies_none=tuple(parse_filter_values(request.technologies_none)),
+            tags_any=tuple(parse_filter_values(request.tags_any)),
+            tags_none=tuple(parse_filter_values(request.tags_none)),
             require_hiring=request.require_hiring,
             ecommerce_only=request.ecommerce_only,
             updated_within_months=request.updated_within_months,
@@ -122,6 +186,7 @@ def execute_lookalike_search(request: LookalikeRequest) -> dict[str, object]:
             min_score=request.min_score,
             catalog_path=catalog_path,
             filters=filters,
+            progress=progress,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -129,6 +194,7 @@ def execute_lookalike_search(request: LookalikeRequest) -> dict[str, object]:
         raise HTTPException(status_code=502, detail=f"Lookalike discovery failed: {exc}") from exc
 
     seeds = [ranked_seed(item, search.query_id, reference_domains) for item in search.ranked]
+    contacts: list[dict[str, object]] = []
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         seeds_path = tmp_path / "lookalike_seeds.csv"
@@ -146,6 +212,11 @@ def execute_lookalike_search(request: LookalikeRequest) -> dict[str, object]:
                 max_pages=request.max_pages,
                 timeout=12.0,
                 pages_by_domain=search.pages_by_domain,
+                contact_sink=contacts,
+                progress=(
+                    (lambda value, stage, message: progress(80 + round(value * 0.18), stage, message))
+                    if progress else None
+                ),
             )
             direct_count, _dropped = export_direct_leads(
                 raw_path, direct_path, verify_mx=request.verify_mx
@@ -158,11 +229,20 @@ def execute_lookalike_search(request: LookalikeRequest) -> dict[str, object]:
             csv_text = ""
             direct_rows = []
 
-    contacts_by_domain = {
+    direct_by_domain = {
         domain_of(row.get("website") or ""): row
         for row in direct_rows
         if domain_of(row.get("website") or "")
     }
+    contacts_by_domain = {str(contact.get("domain", "")): contact for contact in contacts}
+    for contact in contacts:
+        direct = direct_by_domain.get(str(contact.get("domain", "")), {})
+        if direct:
+            contact["verified_email"] = direct.get("verified_email", contact.get("verified_email", ""))
+            contact["owner_name"] = direct.get("owner_name", contact.get("owner_name", ""))
+            contact["owner_role"] = direct.get("owner_role", contact.get("owner_role", ""))
+            contacts_by_domain[str(contact.get("domain", ""))] = contact
+    contacts = filter_contacts(contacts, request)
     matches = [match_payload(item, contacts_by_domain.get(item.company.domain, {})) for item in search.ranked]
     return {
         "query_id": search.query_id,
@@ -175,6 +255,7 @@ def execute_lookalike_search(request: LookalikeRequest) -> dict[str, object]:
         "filtered_count": search.filtered_count,
         "usage": search.usage,
         "matches": matches,
+        "contacts": contacts,
         "csv": csv_text,
     }
 
@@ -193,12 +274,22 @@ def record_lookalike_feedback(request: FeedbackRequest) -> dict[str, str]:
 
 @app.post("/api/scrape")
 def scrape_from_dashboard(request: ScrapeRequest) -> dict[str, object]:
+    return execute_scrape(request)
+
+
+def execute_scrape(
+    request: ScrapeRequest,
+    progress: Callable[[int, str, str], None] | None = None,
+) -> dict[str, object]:
     seeds: list[dict[str, str]] = []
     notes: list[str] = []
+    contacts: list[dict[str, object]] = []
 
     if request.query.strip():
         if google_places_configured():
             try:
+                if progress:
+                    progress(12, "Discovery", "Searching Google Places")
                 places = search_google_places(request.query, request.location, request.max_results)
             except Exception as exc:
                 raise HTTPException(status_code=502, detail=f"Google Places search failed: {exc}") from exc
@@ -261,6 +352,11 @@ def scrape_from_dashboard(request: ScrapeRequest) -> dict[str, object]:
                 dedupe=request.dedupe,
                 max_pages=request.max_pages,
                 timeout=12.0,
+                contact_sink=contacts,
+                progress=(
+                    (lambda value, stage, message: progress(20 + round(value * 0.78), stage, message))
+                    if progress else None
+                ),
             )
             direct_count, _dropped = export_direct_leads(
                 raw_path, direct_path, verify_mx=request.verify_mx
@@ -278,6 +374,8 @@ def scrape_from_dashboard(request: ScrapeRequest) -> dict[str, object]:
         "direct_count": direct_count,
         "csv": csv_text,
         "preview": preview,
+        "contacts": contacts,
+        "matches": [company_from_contact(contact) for contact in contacts],
     }
 
 
@@ -312,12 +410,18 @@ def match_payload(item, contact: dict[str, str]) -> dict[str, object]:
         "summary": profile.summary[:240],
         "technologies": profile.technologies[:5],
         "social_channels": profile.social_channels,
+        "linkedin_url": profile.linkedin_url,
+        "industry_tags": [
+            value.strip() for value in str(contact.get("industry_tags", "")).split(";") if value.strip()
+        ] or [profile.industry or item.company.category],
         "careers_active": profile.careers_active,
         "ecommerce": profile.ecommerce,
         "phone": item.company.phone,
         "location": ", ".join(value for value in [item.company.city, item.company.state] if value),
         "owner_name": contact.get("owner_name", ""),
         "verified_email": contact.get("verified_email", ""),
+        "linkedin_profile_url": contact.get("linkedin_profile_url", ""),
+        "decision_maker_search_url": contact.get("decision_maker_search_url", ""),
     }
 
 
@@ -389,3 +493,31 @@ def score_grade(score: float) -> str:
     if score >= 65:
         return "B"
     return "C"
+
+
+def filter_contacts(contacts: list[dict[str, object]], request: LookalikeRequest) -> list[dict[str, object]]:
+    roles = parse_filter_values(request.decision_maker_roles)
+    output: list[dict[str, object]] = []
+    for contact in contacts:
+        owner_name = str(contact.get("owner_name", ""))
+        owner_role = str(contact.get("owner_role", "")).lower()
+        if request.require_owner and not owner_name:
+            continue
+        if request.require_contact_email and not contact.get("verified_email"):
+            continue
+        if roles and owner_role and not any(role in owner_role for role in roles):
+            continue
+        output.append(contact)
+    return output
+
+
+def company_from_contact(contact: dict[str, object]) -> dict[str, object]:
+    tags = [value.strip() for value in str(contact.get("industry_tags", "")).split(";") if value.strip()]
+    return {
+        **contact,
+        "score": 0,
+        "industry_tags": tags,
+        "technologies": [],
+        "careers_active": False,
+        "ecommerce": False,
+    }

@@ -4,6 +4,7 @@ data/lead_history.csv
 data/lead_history.db
 data/lead_history.db-shm
 data/lead_history.db-wal
+data/jobs/
 __pycache__/
 *.py[cod]
 client_secret_*.apps.googleusercontent.com.json

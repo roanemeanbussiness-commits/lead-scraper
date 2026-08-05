@@ -27,11 +27,11 @@ The 8-Thon implementation follows a two-stage retrieval and reranking design:
 3. Embed the fingerprints with `text-embedding-3-small`.
 4. Search the persistent SQLite catalog first.
 5. Expand a small candidate pool through several AI-derived Google Places queries when the catalog needs more coverage.
-6. Crawl and fingerprint new candidates concurrently, then add them to the catalog.
+6. Crawl and fingerprint new candidates concurrently with a lightweight first pass, then add them to the catalog.
 7. Rank candidates with semantic, structured, and lexical similarity.
 8. Penalize candidates close to the negative examples.
 9. Use a bounded LLM pass to rerank only the best candidates and produce factual fit reasons.
-10. Reuse crawled pages for owner and direct-email enrichment, then export CSV.
+10. Enrich only the ranked shortlist for owner and direct-email evidence, then export CSV.
 
 The Claude teardown supplied after the first implementation highlighted Ocean's structured filter taxonomy and crawl-on-demand behavior. Version 0.4 incorporates the recommendations that are supportable from the project's current public-web data:
 
@@ -44,7 +44,19 @@ The Claude teardown supplied after the first implementation highlighted Ocean's 
 - preview-first scored results and estimated API-call transparency
 - richer CSV company records, including summary, technology, social, hiring, commerce, founding-year, stated-size, and headquarters fields
 
-Revenue, funding, traffic, employee-growth, and department-growth filters are intentionally not fabricated. They require licensed sources, reliable registries, or repeated historical observations. LinkedIn people data is also not scraped because the project does not have a licensed source. SMTP mailbox probing and email sending remain outside this scraper-only product.
+Version 0.5 addresses high-volume operation and contact discovery:
+
+- asynchronous dashboard jobs with progress polling and durable CSV files on the Fly volume
+- multi-query Google Places expansion up to a 300-company candidate pool and 100 ranked matches
+- bounded parallel website profiling and contact enrichment sized for the 512 MB Fly machine
+- lightweight deterministic first-pass candidate profiles, followed by embeddings and a bounded top-60 LLM rerank
+- separate Companies and Contacts views with title, owner, and direct-email controls
+- public-site decision-maker extraction from visible role phrases and schema.org `Person.jobTitle`
+- personal/company LinkedIn links only when the business publishes them, plus navigation-only LinkedIn people-search URLs
+- explicit include/exclude industry tags, with software/SaaS excluded by default
+- cached historical contacts so deduplication does not leave repeat result sets blank
+
+Revenue, funding, traffic, employee-growth, and department-growth filters are intentionally not fabricated. They require licensed sources, reliable registries, or repeated historical observations. LinkedIn people pages are not scraped: official profile access is restricted, so this project only reads LinkedIn URLs a company publishes on its own site and creates user-initiated lookup links. SMTP mailbox probing and email sending remain outside this scraper-only product.
 
 ## Interface Research
 

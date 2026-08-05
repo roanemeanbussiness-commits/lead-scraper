@@ -24,6 +24,11 @@ Use the dashboard's default Lookalike mode to paste ideal-company websites and f
 - Detects common website technologies, social channels, e-commerce markers, and active hiring from public pages.
 - Caches reference-company fingerprints and reports estimated API work for each search.
 - Learns from query-specific Fit / Not fit feedback without globally blacklisting a company.
+- Runs dashboard searches as background jobs with live stage-by-stage progress instead of holding one long browser request open.
+- Supports 50, 75, or 100 ranked-company targets from multi-query candidate pools up to 300 businesses.
+- Separates Companies and Contacts views, with decision-maker title/email filters and reusable cached contacts.
+- Captures personal and company LinkedIn links explicitly published on business websites and provides a targeted LinkedIn people-search link when no profile is published.
+- Adds include/exclude industry tags, with `software` and `saas` excluded by default for blue-collar searches.
 - Optionally verifies email domains with MX record checks.
 - Filters out common low-value addresses like image assets and placeholders.
 - Scores leads for Texas, San Antonio, and blue-collar trade relevance.
@@ -62,11 +67,13 @@ In the dashboard's Lookalike tab:
 1. Paste one ideal company URL per line. Two to four examples usually define a better shared ICP than one.
 2. Optionally paste companies that should not match.
 3. Choose the target market, candidate-pool size, result count, and minimum score.
-4. Run the search, review the ranked matches, and download the direct-email lead CSV.
+4. Run the search, follow the live discovery/ranking/contact progress, review Companies or Contacts, and download the direct-email lead CSV.
+
+The result target is a company target, not a guarantee of 50-100 direct personal emails. Email yield depends on how many businesses publicly publish a non-generic address. Contacts without a public direct email remain visible with source evidence and a LinkedIn decision-maker lookup, but they are not placed in the email-agent CSV.
 
 The user does not provide a keyword. The agent profiles the reference websites, creates several discovery strategies, ranks both new candidates and its saved company catalog, and carries the fit factors into the CSV. See `docs/lookalike-research.md` for architecture, research, limitations, and future free-data imports.
 
-The dashboard uses a dense prospecting workbench inspired by Ocean.io's public company-search workflow: filters on the left, preview-first scored results on the right, and direct CSV export. It retains 8-Thon branding and does not use Ocean assets or claim access to Ocean's proprietary data.
+The dashboard uses a dense white-and-purple prospecting workbench inspired by Ocean.io's public company-search workflow: filters on the left, separate Companies and Contacts tables, scored results, sorting, saved filters, and direct CSV export. It retains 8-Thon branding and does not use Ocean assets or claim access to Ocean's proprietary data.
 
 ## Seed CSV Format
 
@@ -111,7 +118,7 @@ This repo includes a minimal FastAPI health service for Fly deployments:
 flyctl deploy -a lead-scraper-rrhtda
 ```
 
-The dashboard at `/` can start a scrape and return a downloadable CSV.
+The dashboard at `/` starts an asynchronous scrape, polls `/api/jobs/{job_id}` for progress, and downloads the completed CSV from `/api/jobs/{job_id}/download`.
 
 Search by business type and location, or paste one business website URL per line, then download `scraped_leads.csv`. Use the dashboard's MX option when you want stricter email-domain validation.
 
