@@ -1,4 +1,6 @@
-# Like-for-Like Company Discovery
+# Legacy Like-for-Like Company Discovery
+
+This document describes the pre-Ocean local engine retained for rollback and CLI compatibility. The live dashboard now uses Ocean.io directly; see `docs/ocean-api-notes.md`.
 
 ## What Ocean's Public Product Reveals
 

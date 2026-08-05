@@ -1,105 +1,194 @@
 from __future__ import annotations
 
-import unittest
 import time
+import unittest
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from lead_scraper.lookalike import LookalikeRun
+from lead_scraper.ocean import OceanSearchPage
 from lead_scraper.web import (
-    LookalikeRequest,
-    ScrapeRequest,
+    OceanSearchRequest,
     app,
+    build_company_filters,
     dashboard,
-    execute_lookalike_search,
+    execute_ocean_search,
 )
 
 
-class DashboardTests(unittest.TestCase):
-    def test_custom_thousand_company_and_email_targets_are_accepted(self) -> None:
-        lookalike = LookalikeRequest(
-            reference_urls="https://example.com",
-            target_type="companies",
-            target_count=1000,
-            max_candidates=3000,
-            max_results=1000,
-            updated_within_months=120,
+class FakeOceanClient:
+    def __init__(self) -> None:
+        self.company_kwargs = {}
+        self.people_kwargs = {}
+        self.reveal_requests = []
+
+    def search_companies(self, **kwargs):
+        self.company_kwargs = kwargs
+        return OceanSearchPage(
+            records=[
+                {"domain": "apex.com", "name": "Apex Pools", "score": 0.94},
+                {"domain": "blue.com", "name": "Blue Water Pools"},
+            ],
+            total=200,
+            search_after=None,
         )
-        keyword = ScrapeRequest(target_type="emails", target_count=1000, max_results=1000)
 
-        self.assertEqual(1000, lookalike.target_count)
-        self.assertEqual("emails", keyword.target_type)
-
-    def test_email_target_overcollects_company_candidates(self) -> None:
-        empty_run = LookalikeRun(
-            query_id="query-123456",
-            candidates_discovered=0,
-            catalog_size=0,
-            ranked=[],
-            pages_by_domain={},
-            discovery_queries=[],
-            filtered_count=0,
-            usage={},
+    def search_people(self, **kwargs):
+        self.people_kwargs = kwargs
+        return OceanSearchPage(
+            records=[
+                {
+                    "id": "person-1",
+                    "name": "Avery Stone",
+                    "jobTitle": "Owner",
+                    "domain": "apex.com",
+                    "linkedinUrl": "https://linkedin.com/in/avery-stone",
+                },
+                {
+                    "id": "person-2",
+                    "name": "Morgan Lake",
+                    "jobTitle": "President",
+                    "domain": "blue.com",
+                },
+            ],
+            total=2,
+            search_after=None,
         )
-        request = LookalikeRequest(
-            reference_urls="https://ideal.example",
-            target_type="emails",
-            target_count=100,
-            max_candidates=160,
-        )
-        with (
-            patch("lead_scraper.web.parse_public_urls", side_effect=[["https://ideal.example"], []]),
-            patch("lead_scraper.web.find_lookalikes", return_value=empty_run) as find,
-        ):
-            result = execute_lookalike_search(request)
 
-        self.assertEqual(600, find.call_args.kwargs["max_results"])
-        self.assertEqual(1200, find.call_args.kwargs["max_candidates"])
-        self.assertEqual(100, result["target_count"])
+    def reveal_emails(self, person_ids, webhook_url):
+        self.reveal_requests.append((person_ids, webhook_url))
+        return {"status": "in progress"}
 
-    def test_lookalike_mode_is_the_default_dashboard_experience(self) -> None:
+
+class FakeOceanStore:
+    def __init__(self) -> None:
+        self.exported = []
+        self.person_ids = []
+
+    def recent_domains(self, _months):
+        return {"seen.example"}
+
+    def recent_people(self, _months):
+        return {"old-person"}
+
+    def new_reveal(self, person_ids):
+        self.person_ids = person_ids
+        return "secure-callback"
+
+    def wait_for_reveal(self, _token, _timeout, progress=None):
+        if progress:
+            progress(2, 2)
+        return {
+            "person-1": {"address": "avery@apex.com", "status": "verified"},
+            "person-2": {"address": "morgan@blue.com", "status": "guessed"},
+        }
+
+    def record_exports(self, rows):
+        self.exported = rows
+
+
+class OceanDashboardTests(unittest.TestCase):
+    def test_dashboard_is_ocean_native(self) -> None:
         html = dashboard()
-        self.assertIn('id="lookalike-form"', html)
-        self.assertIn("Lookalike companies", html)
-        self.assertIn('data-view="companies"', html)
-        self.assertIn('data-view="contacts"', html)
-        self.assertIn('id="progress-panel"', html)
-        self.assertIn('id="lookalike_target_count"', html)
-        self.assertIn('id="keyword_target_count"', html)
-        self.assertIn('id="freshness"', html)
+        self.assertIn("Ocean lead search", html)
+        self.assertIn('id="reference_domains"', html)
+        self.assertIn('id="seniorities"', html)
+        self.assertIn('id="people_per_company"', html)
+        self.assertIn('id="target_count"', html)
         self.assertIn('max="1000"', html)
-        self.assertIn('id="keyword-form" class="filter-form hidden"', html)
+        self.assertNotIn("Google Maps Connected", html)
+        self.assertNotIn("OpenAI Connected", html)
 
-    def test_lookalike_api_route_is_registered(self) -> None:
-        paths = {route.path for route in app.routes}
-        self.assertIn("/api/lookalikes", paths)
-        self.assertIn("/api/lookalike-feedback", paths)
-        self.assertIn("/api/scrape", paths)
-        self.assertIn("/api/jobs/lookalikes", paths)
-        self.assertIn("/api/jobs/{job_id}", paths)
+    def test_company_filters_use_ocean_location_and_keyword_shapes(self) -> None:
+        request = OceanSearchRequest(
+            mode="filters",
+            keywords_any="pool builder, pool contractor",
+            keywords_none="software",
+            industries_any="Construction",
+            city="San Antonio",
+            state="TX",
+            country="us",
+            company_sizes="2-10, 11-50",
+        )
+        filters = build_company_filters(request)
+        self.assertEqual(["2-10", "11-50"], filters["companySizes"])
+        self.assertEqual(["pool builder", "pool contractor"], filters["keywords"]["anyOf"])
+        self.assertEqual("San Antonio", filters["primaryLocations"]["includeCities"][0]["city"])
+        self.assertEqual("TX", filters["primaryLocations"]["includeRegions"][0]["abbreviation"])
 
-    def test_background_scrape_job_can_be_polled_to_completion(self) -> None:
+    def test_thousand_email_target_overcollects_company_pool(self) -> None:
+        client = FakeOceanClient()
+        store = FakeOceanStore()
+        request = OceanSearchRequest(
+            mode="lookalike",
+            reference_domains="ideal.com",
+            target_type="emails",
+            target_count=1000,
+            find_contacts=False,
+        )
+
+        execute_ocean_search(request, client=client, store=store)
+
+        self.assertEqual(1539, client.company_kwargs["size"])
+
+    @patch.dict("os.environ", {"OCEAN_REVEAL_WAIT_SECONDS": "1"})
+    def test_search_merges_companies_people_and_revealed_emails(self) -> None:
+        client = FakeOceanClient()
+        store = FakeOceanStore()
+        request = OceanSearchRequest(
+            mode="lookalike",
+            reference_domains="ideal.com",
+            target_type="emails",
+            target_count=2,
+        )
+        result = execute_ocean_search(request, client=client, store=store)
+
+        self.assertEqual(2, result["match_count"])
+        self.assertEqual(2, result["direct_count"])
+        self.assertTrue(result["target_met"])
+        self.assertIn("verified_email", result["csv"])
+        self.assertIn("avery@apex.com", result["csv"])
+        self.assertEqual(["ideal.com"], client.company_kwargs["lookalike_domains"])
+        self.assertIn("seen.example", client.company_kwargs["exclude_domains"])
+        self.assertEqual(
+            ["apex.com", "blue.com"],
+            client.people_kwargs["companies_filters"]["includeDomains"],
+        )
+        self.assertIn("old-person", client.people_kwargs["people_filters"]["excludePeopleIds"])
+        self.assertTrue(client.reveal_requests[0][1].endswith("/secure-callback"))
+        self.assertEqual(2, len(store.exported))
+
+    def test_background_ocean_job_can_be_polled_and_downloaded(self) -> None:
         client = TestClient(app)
         fake_result = {
-            "discovery_count": 1,
+            "match_count": 1,
             "direct_count": 1,
             "matches": [],
             "contacts": [],
             "csv": "business_name,verified_email\nApex,a@apex.com\n",
         }
-        with patch("lead_scraper.web.execute_scrape", return_value=fake_result):
-            started = client.post("/api/jobs/scrape", json={"urls": "https://example.com"})
+        with patch("lead_scraper.web.execute_locked_ocean_search", return_value=fake_result):
+            started = client.post(
+                "/api/jobs/ocean",
+                json={"mode": "lookalike", "reference_domains": "ideal.com"},
+            )
             self.assertEqual(202, started.status_code)
             job_id = started.json()["job_id"]
             for _attempt in range(100):
-                status = client.get(f"/api/jobs/{job_id}").json()
-                if status["status"] in {"completed", "failed"}:
+                job = client.get(f"/api/jobs/{job_id}").json()
+                if job["status"] in {"completed", "failed"}:
                     break
                 time.sleep(0.01)
 
-        self.assertEqual("completed", status["status"])
-        self.assertTrue(status["download_url"])
+        self.assertEqual("completed", job["status"])
+        self.assertTrue(job["download_url"])
+
+    def test_ocean_routes_are_registered(self) -> None:
+        paths = {route.path for route in app.routes}
+        self.assertIn("/api/jobs/ocean", paths)
+        self.assertIn("/api/ocean/search", paths)
+        self.assertIn("/api/ocean/credits", paths)
+        self.assertIn("/api/webhooks/ocean/emails/{callback_token}", paths)
 
 
 if __name__ == "__main__":

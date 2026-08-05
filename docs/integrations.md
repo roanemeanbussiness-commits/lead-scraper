@@ -1,36 +1,18 @@
-# Discovery Integration Plan
+# Ocean.io Integration
 
-This project keeps discovery and enrichment separate.
+Ocean.io is the live application's only search and enrichment provider.
 
-Discovery tools find candidate businesses from Google Maps or search. The local `lead_scraper` package enriches their website URLs into owner/email-ready leads.
-
-## Recommended Upstream Roles
-
-| Project | Best Role | Notes |
+| Capability | Endpoint | Behavior |
 | --- | --- | --- |
-| `gosom/google-maps-scraper` | High-volume Google Maps discovery | Strong fit for extracting name, address, phone, website, rating, review count, coordinates, and sometimes email data. |
-| `kaymen99/google-maps-lead-generator` | API-backed discovery and AI enrichment pattern | Uses Serper Maps API plus web enrichment ideas. Useful when we want predictable API-based discovery instead of browser automation. |
-| `jordolang/Google-Scraper` | Workflow inspiration | Useful for output structure, tests, docs, and lead-list formatting after lead data is verified. |
+| Company search | `POST /v3/search/companies` | Native filters, lookalike domains, up to 10,000 results per request |
+| People search | `POST /v3/search/people` | Seniority, department, job-title, company-domain, and people-per-company filters |
+| Email reveal | `POST /v2/reveal/emails` | Asynchronous callback, batches of up to 500 person IDs |
+| Credit balance | `GET /v2/credits/balance` | Standard, email, phone, preview, and daily request balances |
 
-## Normal Agent Workflow
+## Security Boundary
 
-1. Discovery sub-agent runs a Maps/search query such as `roofer in San Antonio, TX`.
-2. Discovery output is normalized to this seed CSV shape:
+The browser never receives the Ocean API token. FastAPI sends it only in the server-side `x-api-token` header. Email callback URLs contain a random one-time token and reveal data is written to the persistent SQLite store.
 
-```csv
-url,business_name,phone,address,city,state,category
-https://example-roofing.com,Example Roofing,210-555-0100,"123 Main St, San Antonio, TX",San Antonio,TX,Roofing
-```
+## Legacy Modules
 
-3. Website enrichment crawls the website plus high-value subpages.
-4. OpenAI enrichment can improve owner names, direct email extraction, and custom opener notes.
-5. Optional MX validation removes emails whose domains do not publish mail-server records.
-6. Output generator exports:
-
-```csv
-email,possible_owner,custom_opener,domain,source_url,business_name,phone,address,city,state,category,blue_collar_signals,texas_signals,confidence
-```
-
-## Integration Boundary
-
-Do not vendor upstream projects directly unless their license, dependency footprint, and runtime behavior have been reviewed. Prefer calling them as optional discovery adapters that produce seed CSV files for this package.
+The public-web crawler, Google Places adapter, and OpenAI enrichment modules remain in the repository for CLI compatibility and rollback. The dashboard and `/api/jobs/ocean` route do not call them.

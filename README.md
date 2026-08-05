@@ -1,137 +1,92 @@
-# 8-Thon Intelligence Lead Scraper
+# 8-Thon Intelligence Ocean Lead Scraper
 
-A focused public-web lead scraper for blue-collar businesses in Texas, starting with San Antonio.
+A focused company and decision-maker search application powered by the Ocean.io API. The live dashboard uses Ocean.io for company discovery, lookalike matching, people search, and email reveal. Google Places and OpenAI are no longer part of the dashboard search path.
 
-Use the dashboard's default Lookalike mode to paste ideal-company websites and find similar Texas businesses, or use the legacy keyword mode. The scraper crawls likely contact pages, extracts public emails, enriches owner/email/opener fields when OpenAI is configured, validates email domains when requested, and exports deduplicated CSV leads.
+## Workflow
 
-## What It Does
+1. Search Ocean companies with reference domains or native company filters.
+2. Restrict Ocean people search to the returned company domains.
+3. Select owners and senior decision-makers by seniority, department, and job-title keywords.
+4. Request verified email reveals and receive results through a secured per-request webhook.
+5. Suppress recently exported companies and people using persistent SQLite history.
+6. Merge company and person data and export a campaign-ready CSV.
 
-- Crawls public business websites from a seed CSV.
-- Prioritizes pages like `contact`, `about`, `team`, `service`, and `locations`.
-- Extracts emails from visible text and `mailto:` links.
-- Extracts role-specific owner/founder names from visible text, JSON-LD, and Microdata.
-- Records owner role, evidence, source URL, and confidence instead of treating every schema `Person` as an owner.
-- Uses OpenAI, when configured, only when deterministic owner evidence is missing.
-- Decodes Cloudflare-protected and common `[at]` / `[dot]` email formats.
-- Validates public URLs and redirects, respects `robots.txt`, limits response sizes, and retries transient failures.
-- Paginates Google Places Text Search up to its 60-result limit and retains stable Place IDs.
-- Builds structured company fingerprints from several ideal-company websites.
-- Ranks candidates with OpenAI embeddings, service/customer/business-model overlap, optional negative examples, and a bounded reranking pass.
-- Stores compact company profiles and float32 embeddings in a persistent SQLite catalog so each run improves future coverage.
-- Exports inspectable lookalike scores and reasons with the lead rows.
-- Supports `precise` product/service matching and broader industry-family matching.
-- Applies compound industry, keyword, technology, hiring, commerce, freshness, and negative-example filters.
-- Detects common website technologies, social channels, e-commerce markers, and active hiring from public pages.
-- Caches reference-company fingerprints and reports estimated API work for each search.
-- Learns from query-specific Fit / Not fit feedback without globally blacklisting a company.
-- Runs dashboard searches as background jobs with live stage-by-stage progress instead of holding one long browser request open.
-- Supports custom company or direct-email targets from 1 to 1,000 and candidate pools up to 3,000 businesses.
-- Expands large keyword jobs across up to 24 trade-aware Google Places queries instead of relying on one 60-result search.
-- Lets each search choose catalog-freshness and lead-history dedupe windows from 1 to 120 months.
-- Separates Companies and Contacts views, with decision-maker title/email filters and reusable cached contacts.
-- Captures personal and company LinkedIn links explicitly published on business websites and provides a targeted LinkedIn people-search link when no profile is published.
-- Adds include/exclude industry tags, with `software` and `saas` excluded by default for blue-collar searches.
-- Optionally verifies email domains with MX record checks.
-- Filters out common low-value addresses like image assets and placeholders.
-- Scores leads for Texas, San Antonio, and blue-collar trade relevance.
-- Exports a clean CSV with source URL, domain, email, possible owner, business name, phone, address, trade signals, and confidence.
+## Dashboard
 
-## API Keys
+The dashboard supports:
 
-Set these in your local shell or Fly.io secrets:
+- Lookalike searches from one or more reference domains.
+- Filter searches using city, state, country, industry, keywords, company size, revenue, founding year, ecommerce status, and website technologies.
+- Decision-maker filters for seniorities, departments, job titles, and people per company.
+- Company or verified-email targets from 1 to 1,000.
+- Ocean standard-credit and email-credit estimates before each search.
+- Live credit balances from Ocean's credit endpoint.
+- Separate Companies and People tables.
+- Background search progress and downloadable CSV results.
+- A configurable 1-to-120-month deduplication window.
+
+## Configuration
+
+The only provider credential required by the live application is an Ocean.io API token:
 
 ```powershell
-GOOGLE_MAPS_API_KEY=your_google_maps_key
-OPENAI_API_KEY=your_openai_key
-OPENAI_MODEL=gpt-4o-mini
-OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OCEAN_API_TOKEN=your_ocean_api_token
 ```
 
-`GOOGLE_MAPS_API_KEY` powers candidate expansion through Google Places. `OPENAI_API_KEY` is required for Lookalike mode and optional for keyword-mode owner-name, direct-email, and custom-opener enrichment.
+The existing Fly secret name `Oceanio` is also supported. Other accepted aliases are `OCEANIO`, `OCEAN_IO_API_KEY`, and `OCEAN_API_KEY`.
 
-The app also recognizes legacy Fly secret aliases `GooglePlacesAPI`, `GOOGLE_PLACES_API_KEY`, `OpenAI_api`, and `OPENAI_API`.
+Runtime settings:
 
-## Quick Start
+```powershell
+OCEAN_WEBHOOK_BASE_URL=https://lead-scraper-rrhtda.fly.dev
+OCEAN_STORE_PATH=/data/ocean_leads.db
+OCEAN_REVEAL_WAIT_SECONDS=120
+JOB_OUTPUT_PATH=/data/jobs
+```
+
+Ocean email reveal is asynchronous. Every reveal batch receives a random callback token, and callback results are stored on the Fly volume before being joined to the CSV.
+
+## Credit Behavior
+
+Ocean company search and people search each cost 0.2 standard credits per returned result. Email reveal costs one email credit for each found address; `notFound` results are not charged. The dashboard estimates the maximum before running and shows the live account balance.
+
+For an email target, the app requests a larger company pool because Ocean documents an approximate 79% email find rate in its decision-maker workflow. Targets remain best effort because market size, filters, available contacts, and credit balances determine the final yield.
+
+## CSV Output
+
+Exports include:
+
+```csv
+business_name,owner_name,first_name,owner_role,verified_email,email_status,phone,website,domain,location,industry,company_size,technologies,linkedin_url,linkedin_profile_url,website_traffic,ocean_company_id,ocean_person_id,source
+```
+
+Company-target exports include companies even when no contact email was found. Email-target exports include only rows with an email address.
+
+## Local Development
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python -m lead_scraper scrape --seeds data/sample_seeds.csv --out output/leads.csv
+uvicorn lead_scraper.web:app --host 127.0.0.1 --port 8080
 ```
 
-The scraper keeps lead memory in `data/lead_history.db` and lookalike company memory in `data/company_catalog.db` by default. SQLite tracks exported emails, domains, Google Place IDs, company fingerprints, and embeddings. Legacy CSV lead-history paths remain supported.
-
-## Lookalike Search
-
-In the dashboard's Lookalike tab:
-
-1. Paste one ideal company URL per line. Two to four examples usually define a better shared ICP than one.
-2. Optionally paste companies that should not match.
-3. Choose the target market, candidate-pool size, result count, and minimum score.
-4. Run the search, follow the live discovery/ranking/contact progress, review Companies or Contacts, and download the direct-email lead CSV.
-
-Choose either a company target or a direct-email target. For an email target, the agent automatically harvests and enriches a larger company pool to account for websites that do not publish a personal address. The target is still best effort: email yield depends on the available market and how many businesses publicly publish a valid non-generic email. Contacts without one remain visible with evidence and a LinkedIn decision-maker lookup, but they are not placed in the email-agent CSV.
-
-The user does not provide a keyword. The agent profiles the reference websites, creates several discovery strategies, ranks both new candidates and its saved company catalog, and carries the fit factors into the CSV. See `docs/lookalike-research.md` for architecture, research, limitations, and future free-data imports.
-
-The dashboard uses a dense white-and-purple prospecting workbench inspired by Ocean.io's public company-search workflow: filters on the left, separate Companies and Contacts tables, scored results, sorting, saved filters, and direct CSV export. It retains 8-Thon branding and does not use Ocean assets or claim access to Ocean's proprietary data.
-
-## Seed CSV Format
-
-At minimum, include a `url` column:
-
-```csv
-url,business_name,phone,address,city,state,category
-https://example-plumbing.com,Example Plumbing,210-555-0100,"123 Main St, San Antonio, TX",San Antonio,TX,Plumbing
-```
-
-Extra columns are preserved when useful for scoring.
-
-## Discovery Integrations
-
-Google Maps discovery should feed this scraper through seed CSVs. See `docs/integrations.md` for how to use `gosom/google-maps-scraper`, `kaymen99/google-maps-lead-generator`, and `jordolang/Google-Scraper` as discovery/workflow inputs without locking this project to one scraper.
-
-See `docs/research.md` for owner-name extraction improvements and optional free/low-cost APIs that can improve lead quality.
-
-## Output Goal
-
-The raw scraper export uses these columns:
-
-```csv
-email,possible_owner,owner_role,owner_evidence,owner_source_url,owner_confidence,custom_opener,place_id,domain,source_url,business_name,phone,address,city,state,category,blue_collar_signals,texas_signals,confidence
-```
-
-Use `--dedupe email`, `--dedupe domain`, `--dedupe email_or_domain`, or `--dedupe none` to control how aggressively the agent avoids leads it has already exported.
-
-To prepare a filtered direct-lead CSV, run:
+Run tests with:
 
 ```powershell
-python -m lead_scraper export-direct --input output/leads.csv --out output/direct_leads.csv
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
-
-This drops generic inboxes like `info@`, `support@`, and `sales@`, deduplicates emails, and fills `first_name` for downstream tools. Add `--verify-mx` to require each email domain to have MX mail records.
 
 ## Fly.io
 
-This repo includes a minimal FastAPI health service for Fly deployments:
+GitHub Actions deploys every push to `master` to `lead-scraper-rrhtda`. The `lead_data` Fly volume stores jobs, email callbacks, and export history across deployments.
 
 ```powershell
 flyctl deploy -a lead-scraper-rrhtda
 ```
 
-The dashboard at `/` starts an asynchronous scrape, polls `/api/jobs/{job_id}` for progress, and downloads the completed CSV from `/api/jobs/{job_id}/download`.
+Do not commit Ocean or Fly tokens. Store `Oceanio` as a Fly application secret and `FLY_API_TOKEN` as a GitHub Actions repository secret.
 
-Search by business type and location, or paste one business website URL per line, then download `scraped_leads.csv`. Use the dashboard's MX option when you want stricter email-domain validation.
+## Responsible Use
 
-Fly mounts the `lead_data` volume at `/data`, where the lead history and company catalog survive deploys and Machine restarts.
-
-## Auto Deploy
-
-GitHub Actions deploys to Fly on every push to `master`.
-
-Add a GitHub Actions repository secret named `FLY_API_TOKEN` with a Fly deploy token. Do not commit Fly tokens to the repo. You can also run the `Fly Deploy` workflow manually from the GitHub Actions tab.
-
-## Notes
-
-This tool is designed for public business contact discovery. Respect robots.txt, website terms, email laws, opt-out requests, and platform rules. Do not use it for credential harvesting, private data collection, or spam.
+Use business and professional contact data lawfully. Honor opt-out requests, applicable email rules, Ocean.io's terms, and the rules of downstream outreach systems.

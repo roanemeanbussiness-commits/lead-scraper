@@ -12,11 +12,10 @@ primary_region = 'iad'
 [env]
   LEAD_HISTORY_PATH = '/data/lead_history.db'
   COMPANY_CATALOG_PATH = '/data/company_catalog.db'
-  OPENAI_EMBEDDING_MODEL = 'text-embedding-3-small'
-  LOOKALIKE_CANDIDATE_AI = 'false'
-  LOOKALIKE_PROFILE_WORKERS = '8'
-  CONTACT_ENRICHMENT_WORKERS = '6'
   JOB_OUTPUT_PATH = '/data/jobs'
+  OCEAN_STORE_PATH = '/data/ocean_leads.db'
+  OCEAN_WEBHOOK_BASE_URL = 'https://lead-scraper-rrhtda.fly.dev'
+  OCEAN_REVEAL_WAIT_SECONDS = '120'
 
 [mounts]
   source = 'lead_data'

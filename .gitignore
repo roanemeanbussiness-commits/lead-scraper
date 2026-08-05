@@ -4,6 +4,9 @@ data/lead_history.csv
 data/lead_history.db
 data/lead_history.db-shm
 data/lead_history.db-wal
+data/ocean_leads.db
+data/ocean_leads.db-shm
+data/ocean_leads.db-wal
 data/jobs/
 __pycache__/
 *.py[cod]

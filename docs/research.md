@@ -1,4 +1,6 @@
-# Scraper Improvement Research
+# Legacy Scraper Improvement Research
+
+This document records the earlier Google/OpenAI research path. The live dashboard now uses Ocean.io directly; see `docs/ocean-api-notes.md`.
 
 ## Owner Name Accuracy
 
