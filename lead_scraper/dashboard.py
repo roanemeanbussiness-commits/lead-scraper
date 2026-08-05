@@ -264,7 +264,7 @@ def render_dashboard(version: str, ocean_configured: bool) -> str:
   const boolValue = selector => $(selector).checked;
 
   function normalizedRevenueValue() {{
-    const aliases={{"<1M":"0-1M","UNDER1M":"0-1M","0M-1M":"0-1M","1M":"1-10M","1M-10M":"1-10M","10M":"10-50M","10M-50M":"10-50M","50M":"50-100M","50M-100M":"50-100M","100M":"100-500M","100M-500M":"100-500M","500M":"500-1000M","500M-1000M":"500-1000M","1000M":">1000M","1000M+":">1000M",">1B":">1000M"}};
+    const aliases={{"0":"0-1M","<1M":"0-1M","UNDER1M":"0-1M","0M-1M":"0-1M","1":"1-10M","1M":"1-10M","1M-10M":"1-10M","10":"10-50M","10M":"10-50M","10M-50M":"10-50M","50":"50-100M","50M":"50-100M","50M-100M":"50-100M","100":"100-500M","100M":"100-500M","100M-500M":"100-500M","500":"500-1000M","500M":"500-1000M","500M-1000M":"500-1000M","1000":">1000M","1000M":">1000M","1000M+":">1000M",">1B":">1000M"}};
     return textValue("#revenues").split(",").map(value=>{{const item=value.trim().toUpperCase().replaceAll("$","").replaceAll(" ","").replaceAll("–","-").replaceAll("—","-");return aliases[item]||item;}}).filter(Boolean).join(", ");
   }}
 

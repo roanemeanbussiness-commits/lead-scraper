@@ -389,6 +389,7 @@ def build_company_filters(request: OceanSearchRequest) -> dict[str, object]:
         filters["revenues"] = revenues
     industries = parse_values(request.industries_any)
     excluded_industries = parse_values(request.industries_none)
+    reject_filter_overlap("industries", industries, excluded_industries)
     if industries:
         filters["industries"] = {
             "industries": industries,
@@ -399,6 +400,7 @@ def build_company_filters(request: OceanSearchRequest) -> dict[str, object]:
     keywords_any = parse_values(request.keywords_any or request.query)
     keywords_all = parse_values(request.keywords_all)
     keywords_none = parse_values(request.keywords_none)
+    reject_filter_overlap("keywords", [*keywords_any, *keywords_all], keywords_none)
     if keywords_any or keywords_all or keywords_none:
         filters["keywords"] = compact_filter(
             {"anyOf": keywords_any, "allOf": keywords_all, "noneOf": keywords_none}
@@ -627,6 +629,16 @@ def parse_values(value: str) -> list[str]:
     return [item.strip() for item in value.replace("\n", ",").split(",") if item.strip()]
 
 
+def reject_filter_overlap(label: str, included: list[str], excluded: list[str]) -> None:
+    included_by_key = {item.casefold(): item for item in included}
+    overlap = [item for item in excluded if item.casefold() in included_by_key]
+    if overlap:
+        raise ValueError(
+            f"Remove '{overlap[0]}' from either included or excluded {label}; "
+            "the same value cannot be in both fields."
+        )
+
+
 OCEAN_REVENUE_RANGES = (
     "0-1M",
     "1-10M",
@@ -640,19 +652,26 @@ OCEAN_REVENUE_RANGES = (
 
 def normalize_revenues(value: str) -> list[str]:
     aliases = {
+        "0": "0-1M",
         "<1M": "0-1M",
         "UNDER1M": "0-1M",
         "0M-1M": "0-1M",
+        "1": "1-10M",
         "1M": "1-10M",
         "1M-10M": "1-10M",
+        "10": "10-50M",
         "10M": "10-50M",
         "10M-50M": "10-50M",
+        "50": "50-100M",
         "50M": "50-100M",
         "50M-100M": "50-100M",
+        "100": "100-500M",
         "100M": "100-500M",
         "100M-500M": "100-500M",
+        "500": "500-1000M",
         "500M": "500-1000M",
         "500M-1000M": "500-1000M",
+        "1000": ">1000M",
         "1000M": ">1000M",
         "1000M+": ">1000M",
         ">1B": ">1000M",

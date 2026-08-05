@@ -128,8 +128,18 @@ class OceanDashboardTests(unittest.TestCase):
 
     def test_revenue_normalization_rejects_unknown_ranges(self) -> None:
         self.assertEqual(["1-10M"], normalize_revenues("1m"))
+        self.assertEqual(["1-10M", "10-50M"], normalize_revenues("1, 10"))
         with self.assertRaisesRegex(ValueError, "Revenue range"):
             normalize_revenues("lots of revenue")
+
+    def test_company_filters_reject_same_include_and_exclude_value(self) -> None:
+        request = OceanSearchRequest(
+            mode="filters",
+            industries_any="Marketing",
+            industries_none="marketing",
+        )
+        with self.assertRaisesRegex(ValueError, "same value cannot be in both"):
+            build_company_filters(request)
 
     def test_thousand_email_target_overcollects_company_pool(self) -> None:
         client = FakeOceanClient()

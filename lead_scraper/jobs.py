@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -11,6 +12,7 @@ from typing import Callable
 
 
 JobRunner = Callable[[Callable[[int, str, str], None]], dict[str, object]]
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -90,6 +92,7 @@ class JobManager:
             )
         except Exception as exc:
             detail = getattr(exc, "detail", None)
+            LOGGER.exception("Background job %s failed: %s", job_id, detail or exc)
             self._update(
                 job_id,
                 status="failed",
