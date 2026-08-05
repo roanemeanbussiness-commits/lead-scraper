@@ -217,7 +217,10 @@ def execute_ocean_search(
     if request.target_type == "emails":
         company_goal = min(3000, max(request.target_count, math.ceil(request.target_count / 0.65)))
 
-    companies_filters = build_company_filters(request)
+    try:
+        companies_filters = build_company_filters(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     excluded_domains = sorted(
         set(negatives).union(history.recent_domains(request.dedupe_months))
     )
@@ -378,17 +381,18 @@ def build_company_filters(request: OceanSearchRequest) -> dict[str, object]:
     sizes = parse_values(request.company_sizes)
     if sizes:
         filters["companySizes"] = sizes
-    revenues = parse_values(request.revenues)
+    revenues = normalize_revenues(request.revenues)
     if revenues:
         filters["revenues"] = revenues
     industries = parse_values(request.industries_any)
     excluded_industries = parse_values(request.industries_none)
-    if industries or excluded_industries:
+    if industries:
         filters["industries"] = {
             "industries": industries,
-            "excludeIndustries": excluded_industries,
             "mode": "anyOf",
         }
+    if excluded_industries:
+        filters["excludeIndustries"] = excluded_industries
     keywords_any = parse_values(request.keywords_any or request.query)
     keywords_all = parse_values(request.keywords_all)
     keywords_none = parse_values(request.keywords_none)
@@ -618,6 +622,61 @@ def scrape_compatibility_request(request: ScrapeRequest) -> OceanSearchRequest:
 
 def parse_values(value: str) -> list[str]:
     return [item.strip() for item in value.replace("\n", ",").split(",") if item.strip()]
+
+
+OCEAN_REVENUE_RANGES = (
+    "0-1M",
+    "1-10M",
+    "10-50M",
+    "50-100M",
+    "100-500M",
+    "500-1000M",
+    ">1000M",
+)
+
+
+def normalize_revenues(value: str) -> list[str]:
+    aliases = {
+        "<1M": "0-1M",
+        "UNDER1M": "0-1M",
+        "0M-1M": "0-1M",
+        "1M": "1-10M",
+        "1M-10M": "1-10M",
+        "10M": "10-50M",
+        "10M-50M": "10-50M",
+        "50M": "50-100M",
+        "50M-100M": "50-100M",
+        "100M": "100-500M",
+        "100M-500M": "100-500M",
+        "500M": "500-1000M",
+        "500M-1000M": "500-1000M",
+        "1000M": ">1000M",
+        "1000M+": ">1000M",
+        ">1B": ">1000M",
+    }
+    normalized: list[str] = []
+    invalid: list[str] = []
+    for raw in parse_values(value):
+        item = (
+            raw.upper()
+            .replace("$", "")
+            .replace(" ", "")
+            .replace("–", "-")
+            .replace("—", "-")
+            .replace("MILLION", "M")
+            .replace("BILLION", "B")
+        )
+        canonical = aliases.get(item, item)
+        if canonical not in OCEAN_REVENUE_RANGES:
+            invalid.append(raw)
+        elif canonical not in normalized:
+            normalized.append(canonical)
+    if invalid:
+        choices = ", ".join(OCEAN_REVENUE_RANGES)
+        raise ValueError(
+            f"Revenue range '{invalid[0]}' is invalid. Use one or more of: {choices}."
+        )
+    return normalized
 
 
 def parse_domains(value: str) -> list[str]:

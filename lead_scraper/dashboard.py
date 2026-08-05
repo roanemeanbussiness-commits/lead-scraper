@@ -190,7 +190,7 @@ def render_dashboard(version: str, ocean_configured: bool) -> str:
         <summary><i data-lucide="users"></i>Company profile</summary>
         <div class="details-body">
           <div class="field"><label for="company_sizes">Employee sizes</label><input id="company_sizes" placeholder="2-10, 11-50, 51-200"></div>
-          <div class="field"><label for="revenues">Revenue ranges</label><input id="revenues" placeholder="1-10M, 10-50M"></div>
+          <div class="field"><label for="revenues">Revenue ranges</label><input id="revenues" placeholder="0-1M, 1-10M, 10-50M"></div>
           <div class="grid-2"><div><label for="year_from">Founded after</label><input id="year_from" type="number" min="0" max="2100"></div><div><label for="year_to">Founded before</label><input id="year_to" type="number" min="0" max="2100"></div></div>
           <div class="field" style="margin-top:10px"><label for="ecommerce">E-commerce</label><select id="ecommerce"><option value="any">Any</option><option value="include">Only e-commerce</option><option value="exclude">Exclude e-commerce</option></select></div>
         </div>

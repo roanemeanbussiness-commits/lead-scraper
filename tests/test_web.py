@@ -13,6 +13,7 @@ from lead_scraper.web import (
     build_company_filters,
     dashboard,
     execute_ocean_search,
+    normalize_revenues,
 )
 
 
@@ -105,16 +106,26 @@ class OceanDashboardTests(unittest.TestCase):
             keywords_any="pool builder, pool contractor",
             keywords_none="software",
             industries_any="Construction",
+            industries_none="Software, SaaS",
             city="San Antonio",
             state="TX",
             country="us",
             company_sizes="2-10, 11-50",
+            revenues="$1M-$10M, 50m",
         )
         filters = build_company_filters(request)
         self.assertEqual(["2-10", "11-50"], filters["companySizes"])
+        self.assertEqual(["1-10M", "50-100M"], filters["revenues"])
+        self.assertEqual(["Software", "SaaS"], filters["excludeIndustries"])
+        self.assertNotIn("excludeIndustries", filters["industries"])
         self.assertEqual(["pool builder", "pool contractor"], filters["keywords"]["anyOf"])
         self.assertEqual("San Antonio", filters["primaryLocations"]["includeCities"][0]["city"])
         self.assertEqual("TX", filters["primaryLocations"]["includeRegions"][0]["abbreviation"])
+
+    def test_revenue_normalization_rejects_unknown_ranges(self) -> None:
+        self.assertEqual(["1-10M"], normalize_revenues("1m"))
+        with self.assertRaisesRegex(ValueError, "Revenue range"):
+            normalize_revenues("lots of revenue")
 
     def test_thousand_email_target_overcollects_company_pool(self) -> None:
         client = FakeOceanClient()
