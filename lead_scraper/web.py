@@ -11,7 +11,7 @@ from typing import Callable
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from . import __version__
@@ -99,8 +99,11 @@ class ScrapeRequest(OceanSearchRequest):
 
 
 @app.get("/", response_class=HTMLResponse)
-def dashboard() -> str:
-    return render_dashboard(version=__version__, ocean_configured=ocean_configured())
+def dashboard() -> HTMLResponse:
+    return HTMLResponse(
+        render_dashboard(version=__version__, ocean_configured=ocean_configured()),
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
 
 
 @app.post("/api/jobs/ocean", status_code=202)
@@ -142,11 +145,11 @@ def execute_locked_ocean_search(
 
 
 @app.get("/api/jobs/{job_id}")
-def get_job(job_id: str) -> dict[str, object]:
+def get_job(job_id: str) -> JSONResponse:
     job = JOB_MANAGER.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Search job not found.")
-    return job.snapshot()
+    return JSONResponse(job.snapshot(), headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/jobs/{job_id}/download")

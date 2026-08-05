@@ -263,12 +263,17 @@ def render_dashboard(version: str, ocean_configured: bool) -> str:
   const numericValue = selector => Number($(selector).value || 0);
   const boolValue = selector => $(selector).checked;
 
+  function normalizedRevenueValue() {{
+    const aliases={{"<1M":"0-1M","UNDER1M":"0-1M","0M-1M":"0-1M","1M":"1-10M","1M-10M":"1-10M","10M":"10-50M","10M-50M":"10-50M","50M":"50-100M","50M-100M":"50-100M","100M":"100-500M","100M-500M":"100-500M","500M":"500-1000M","500M-1000M":"500-1000M","1000M":">1000M","1000M+":">1000M",">1B":">1000M"}};
+    return textValue("#revenues").split(",").map(value=>{{const item=value.trim().toUpperCase().replaceAll("$","").replaceAll(" ","").replaceAll("–","-").replaceAll("—","-");return aliases[item]||item;}}).filter(Boolean).join(", ");
+  }}
+
   function payload() {{
     return {{
       mode:state.mode, reference_domains:textValue("#reference_domains"), negative_domains:textValue("#negative_domains"),
       keywords_any:textValue("#keywords_any"), keywords_all:textValue("#keywords_all"), keywords_none:textValue("#keywords_none"),
       industries_any:textValue("#industries_any"), industries_none:textValue("#industries_none"), technologies_any:textValue("#technologies_any"),
-      company_sizes:textValue("#company_sizes"), revenues:textValue("#revenues"), country:textValue("#country"), city:textValue("#city"), state:textValue("#state"), ecommerce:textValue("#ecommerce"),
+      company_sizes:textValue("#company_sizes"), revenues:normalizedRevenueValue(), country:textValue("#country"), city:textValue("#city"), state:textValue("#state"), ecommerce:textValue("#ecommerce"),
       year_founded_from:numericValue("#year_from") || null, year_founded_to:numericValue("#year_to") || null,
       target_type:textValue("#target_type"), target_count:numericValue("#target_count"), find_contacts:boolValue("#find_contacts"), reveal_emails:boolValue("#reveal_emails"),
       people_per_company:numericValue("#people_per_company"), seniorities:textValue("#seniorities"), departments:textValue("#departments"), job_titles:textValue("#job_titles"), dedupe_months:numericValue("#dedupe_months")

@@ -90,8 +90,12 @@ class FakeOceanStore:
 
 class OceanDashboardTests(unittest.TestCase):
     def test_dashboard_is_ocean_native(self) -> None:
-        html = dashboard()
+        response = dashboard()
+        html = response.body.decode("utf-8")
         self.assertIn("Ocean lead search", html)
+        self.assertIn('placeholder="0-1M, 1-10M, 10-50M"', html)
+        self.assertIn("normalizedRevenueValue", html)
+        self.assertEqual("no-store, max-age=0", response.headers["cache-control"])
         self.assertIn('id="reference_domains"', html)
         self.assertIn('id="seniorities"', html)
         self.assertIn('id="people_per_company"', html)
