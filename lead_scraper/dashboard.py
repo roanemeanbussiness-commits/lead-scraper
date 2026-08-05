@@ -206,8 +206,8 @@ def render_dashboard(version: str, ocean_configured: bool) -> str:
         <div class="details-body">
           <div class="switch-row field"><div><label>Find contacts</label><span class="subtle">Ocean people search</span></div><label class="switch"><input id="find_contacts" type="checkbox" checked><span></span></label></div>
           <div class="field"><label for="seniorities">Seniorities</label><input id="seniorities" value="Owner, Founder, C-Level, Partner, VP, Head, Director"></div>
-          <div class="field"><label for="departments">Departments</label><input id="departments" value="Founder/Owner, Management, Operations"></div>
-          <div class="field"><label for="job_titles">Job title keywords</label><textarea id="job_titles">owner, founder, president, chief executive officer, principal, general manager</textarea></div>
+          <div class="field"><label for="departments">Departments</label><input id="departments" placeholder="Management, Operations"></div>
+          <div class="field"><label for="job_titles">Job title keywords</label><textarea id="job_titles" placeholder="owner, president, general manager"></textarea></div>
           <div class="grid-2"><div><label for="people_per_company">People / company</label><input id="people_per_company" type="number" min="1" max="10" value="1"></div><div><label for="dedupe_months">Dedupe months</label><input id="dedupe_months" type="number" min="1" max="120" value="12"></div></div>
           <div class="switch-row" style="margin-top:10px"><div><label>Reveal emails</label><span class="subtle">Uses email credits</span></div><label class="switch"><input id="reveal_emails" type="checkbox" checked><span></span></label></div>
         </div>

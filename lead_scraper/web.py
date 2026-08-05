@@ -60,8 +60,8 @@ class OceanSearchRequest(BaseModel):
     reveal_emails: bool = True
     people_per_company: int = Field(1, ge=1, le=10)
     seniorities: str = "Owner, Founder, C-Level, Partner, VP, Head, Director"
-    departments: str = "Founder/Owner, Management, Operations"
-    job_titles: str = "owner, founder, president, chief executive officer, principal, general manager"
+    departments: str = ""
+    job_titles: str = ""
     dedupe_months: int = Field(12, ge=1, le=120)
 
 
