@@ -6,10 +6,16 @@ from pathlib import Path
 from unittest.mock import patch
 
 from lead_scraper.company_catalog import CatalogCompany, CompanyCatalog
-from lead_scraper.company_profile import CompanyProfile, merge_profiles
+from lead_scraper.company_profile import CompanyProfile, detect_public_signals, merge_profiles
 from lead_scraper.crawler import CrawledPage
 from lead_scraper.google_places import PlaceLead
-from lead_scraper.lookalike import cosine_similarity, find_lookalikes, score_company
+from lead_scraper.lookalike import (
+    LookalikeFilters,
+    company_matches_filters,
+    cosine_similarity,
+    find_lookalikes,
+    score_company,
+)
 from lead_scraper.models import Seed
 
 
@@ -67,6 +73,41 @@ class LookalikeScoringTests(unittest.TestCase):
         self.assertIn("drain cleaning", merged.services)
         self.assertIn("residential homeowners", merged.customer_types)
 
+    def test_compound_filters_support_includes_excludes_and_signals(self) -> None:
+        profile = self.candidate_profile.model_copy(
+            update={"technologies": ["wordpress", "hubspot"], "careers_active": True}
+        )
+        company = CatalogCompany(
+            **{**self.company.__dict__, "profile": profile, "updated_at": "2099-01-01T00:00:00+00:00"}
+        )
+        accepted = LookalikeFilters(
+            industries_any=("plumbing",),
+            keywords_any=("drain",),
+            technologies_all=("wordpress", "hubspot"),
+            require_hiring=True,
+        )
+        rejected = LookalikeFilters(technologies_none=("hubspot",))
+
+        self.assertTrue(company_matches_filters(company, accepted))
+        self.assertFalse(company_matches_filters(company, rejected))
+
+    def test_public_signal_detection_reads_technology_social_and_hiring_markers(self) -> None:
+        pages = [
+            CrawledPage(
+                "https://example.com",
+                '<script src="https://js.hs-scripts.com/1.js"></script>'
+                '<a href="https://linkedin.com/company/example">LinkedIn</a>'
+                '<a href="/careers">Join our team</a><button>Add to cart</button>',
+            )
+        ]
+
+        signals = detect_public_signals(pages)
+
+        self.assertIn("hubspot", signals["technologies"])
+        self.assertIn("linkedin", signals["social_channels"])
+        self.assertTrue(signals["careers_active"])
+        self.assertTrue(signals["ecommerce"])
+
 
 class CompanyCatalogTests(unittest.TestCase):
     def test_profile_and_float32_embedding_persist(self) -> None:
@@ -95,6 +136,19 @@ class CompanyCatalogTests(unittest.TestCase):
         self.assertEqual("roofing", loaded.profile.industry)
         self.assertEqual("places/roofer", loaded.place_id)
         self.assertAlmostEqual(0.125, loaded.embedding[0], places=5)
+
+    def test_query_feedback_is_persistent_and_replaceable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "catalog.db"
+            catalog = CompanyCatalog(path)
+            catalog.record_feedback("query-123456", "roofer.example", "fit")
+            catalog.record_feedback("query-123456", "roofer.example", "not_fit")
+            reloaded = CompanyCatalog(path)
+
+            self.assertEqual(
+                "not_fit",
+                reloaded.feedback_for_query("query-123456")["roofer.example"],
+            )
 
 
 class LookalikeFlowTests(unittest.TestCase):
@@ -128,7 +182,7 @@ class LookalikeFlowTests(unittest.TestCase):
                 patch("lead_scraper.lookalike.get_openai_api_key", return_value="test-key"),
                 patch(
                     "lead_scraper.lookalike.build_reference_set",
-                    return_value=([ideal], [[1.0, 0.0]], {"ideal.example"}),
+                    return_value=([ideal], [[1.0, 0.0]], {"ideal.example"}, 0),
                 ),
                 patch("lead_scraper.lookalike.search_google_places_queries", return_value=[place]),
                 patch("lead_scraper.lookalike.profile_candidate", return_value=(seed, candidate, pages)),

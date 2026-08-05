@@ -30,6 +30,14 @@ LEAD_EXPORT_FIELDNAMES = [
     "negative_penalty",
     "similarity_reasons",
     "reference_domains",
+    "company_summary",
+    "technologies",
+    "social_channels",
+    "careers_active",
+    "ecommerce",
+    "year_founded",
+    "employee_size",
+    "headquarters",
 ]
 
 
@@ -95,6 +103,14 @@ def clean_direct_leads(
                 "negative_penalty": clean(lead.get("negative_penalty")),
                 "similarity_reasons": clean(lead.get("similarity_reasons")),
                 "reference_domains": clean(lead.get("reference_domains")),
+                "company_summary": clean(lead.get("company_summary")),
+                "technologies": clean(lead.get("technologies")),
+                "social_channels": clean(lead.get("social_channels")),
+                "careers_active": clean(lead.get("careers_active")),
+                "ecommerce": clean(lead.get("ecommerce")),
+                "year_founded": clean(lead.get("year_founded")),
+                "employee_size": clean(lead.get("employee_size")),
+                "headquarters": clean(lead.get("headquarters")),
             }
         )
 

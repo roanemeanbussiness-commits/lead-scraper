@@ -5,6 +5,7 @@ import json
 import os
 import re
 from collections import Counter
+from urllib.parse import urlparse
 
 import httpx
 from pydantic import BaseModel, Field
@@ -32,6 +33,14 @@ class CompanyProfile(BaseModel):
     service_area: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
     discovery_queries: list[str] = Field(default_factory=list)
+    year_founded: str = ""
+    employee_size: str = ""
+    headquarters: str = ""
+    technologies: list[str] = Field(default_factory=list)
+    social_channels: list[str] = Field(default_factory=list)
+    hiring_departments: list[str] = Field(default_factory=list)
+    ecommerce: bool = False
+    careers_active: bool = False
 
     def canonical_text(self) -> str:
         parts = [
@@ -43,6 +52,14 @@ class CompanyProfile(BaseModel):
             f"Specialties: {', '.join(self.specialties)}",
             f"Service area: {', '.join(self.service_area)}",
             f"Keywords: {', '.join(self.keywords)}",
+            f"Founded: {self.year_founded}",
+            f"Employee size: {self.employee_size}",
+            f"Headquarters: {self.headquarters}",
+            f"Technologies: {', '.join(self.technologies)}",
+            f"Social channels: {', '.join(self.social_channels)}",
+            f"Hiring: {', '.join(self.hiring_departments)}",
+            f"Ecommerce: {'yes' if self.ecommerce else ''}",
+            f"Careers active: {'yes' if self.careers_active else ''}",
         ]
         return "\n".join(part for part in parts if not part.endswith(": "))
 
@@ -50,10 +67,11 @@ class CompanyProfile(BaseModel):
 def profile_company(seed: Seed, pages: list[CrawledPage]) -> CompanyProfile:
     evidence = website_evidence(pages)
     if not evidence:
-        return fallback_profile(seed, "")
+        return fallback_profile(seed, "", pages)
     if not get_openai_api_key():
         return fallback_profile(seed, evidence)
 
+    observed = detect_public_signals(pages)
     payload = {
         "company_name": seed.business_name or "",
         "known_category": seed.category or "",
@@ -67,6 +85,7 @@ def profile_company(seed: Seed, pages: list[CrawledPage]) -> CompanyProfile:
             "Places discovery queries that identify the same kind of company without using this company's name. "
             "Do not infer revenue, employee count, ownership, or unsupported facts."
         ),
+        "deterministic_observations": observed,
     }
     try:
         response = httpx.post(
@@ -92,10 +111,20 @@ def profile_company(seed: Seed, pages: list[CrawledPage]) -> CompanyProfile:
                                 "service_area": {"type": "array", "items": {"type": "string"}},
                                 "keywords": {"type": "array", "items": {"type": "string"}},
                                 "discovery_queries": {"type": "array", "items": {"type": "string"}},
+                                "year_founded": {"type": "string"},
+                                "employee_size": {"type": "string"},
+                                "headquarters": {"type": "string"},
+                                "technologies": {"type": "array", "items": {"type": "string"}},
+                                "social_channels": {"type": "array", "items": {"type": "string"}},
+                                "hiring_departments": {"type": "array", "items": {"type": "string"}},
+                                "ecommerce": {"type": "boolean"},
+                                "careers_active": {"type": "boolean"},
                             },
                             "required": [
                                 "summary", "industry", "services", "customer_types", "business_model",
                                 "specialties", "service_area", "keywords", "discovery_queries",
+                                "year_founded", "employee_size", "headquarters", "technologies",
+                                "social_channels", "hiring_departments", "ecommerce", "careers_active",
                             ],
                         },
                     },
@@ -110,9 +139,13 @@ def profile_company(seed: Seed, pages: list[CrawledPage]) -> CompanyProfile:
         )
         response.raise_for_status()
         profile = CompanyProfile.model_validate_json(response.json()["choices"][0]["message"]["content"])
+        profile.technologies = unique_phrases(profile.technologies + observed["technologies"], limit=24)
+        profile.social_channels = unique_phrases(profile.social_channels + observed["social_channels"], limit=12)
+        profile.ecommerce = profile.ecommerce or observed["ecommerce"]
+        profile.careers_active = profile.careers_active or observed["careers_active"]
         return normalize_profile(profile)
     except Exception:
-        return fallback_profile(seed, evidence)
+        return fallback_profile(seed, evidence, pages)
 
 
 def website_evidence(pages: list[CrawledPage], limit: int = 14_000) -> str:
@@ -130,12 +163,13 @@ def website_evidence(pages: list[CrawledPage], limit: int = 14_000) -> str:
     return "\n\n".join(sections)[:limit]
 
 
-def fallback_profile(seed: Seed, evidence: str) -> CompanyProfile:
+def fallback_profile(seed: Seed, evidence: str, pages: list[CrawledPage] | None = None) -> CompanyProfile:
     tokens = [token.lower() for token in TOKEN_PATTERN.findall(evidence)]
     keywords = [token for token, _count in Counter(token for token in tokens if token not in STOPWORDS).most_common(18)]
     category = (seed.category or "").strip()
     query = category or " ".join(keywords[:3]) or (seed.business_name or "local service business")
     summary = " ".join(evidence.split())[:900]
+    observed = detect_public_signals(pages or [])
     return CompanyProfile(
         summary=summary,
         industry=category,
@@ -143,6 +177,10 @@ def fallback_profile(seed: Seed, evidence: str) -> CompanyProfile:
         service_area=[value for value in [seed.city, seed.state] if value],
         keywords=keywords,
         discovery_queries=[query],
+        technologies=observed["technologies"],
+        social_channels=observed["social_channels"],
+        ecommerce=observed["ecommerce"],
+        careers_active=observed["careers_active"],
     )
 
 
@@ -184,6 +222,14 @@ def merge_profiles(profiles: list[CompanyProfile]) -> CompanyProfile:
         service_area=merge_lists(profile.service_area for profile in profiles),
         keywords=merge_lists(profile.keywords for profile in profiles),
         discovery_queries=merge_lists((profile.discovery_queries for profile in profiles), limit=6),
+        year_founded=most_common_text(profile.year_founded for profile in profiles),
+        employee_size=most_common_text(profile.employee_size for profile in profiles),
+        headquarters=most_common_text(profile.headquarters for profile in profiles),
+        technologies=merge_lists((profile.technologies for profile in profiles), limit=24),
+        social_channels=merge_lists((profile.social_channels for profile in profiles), limit=12),
+        hiring_departments=merge_lists((profile.hiring_departments for profile in profiles), limit=24),
+        ecommerce=any(profile.ecommerce for profile in profiles),
+        careers_active=any(profile.careers_active for profile in profiles),
     )
 
 
@@ -198,3 +244,55 @@ def most_common_text(values) -> str:
 
 def profile_hash(profile: CompanyProfile) -> str:
     return hashlib.sha256(profile.canonical_text().encode("utf-8")).hexdigest()
+
+
+TECHNOLOGY_SIGNATURES = {
+    "wordpress": ("wp-content", "wp-includes", "wordpress"),
+    "shopify": ("cdn.shopify.com", "shopify.theme", "myshopify.com"),
+    "hubspot": ("js.hs-scripts.com", "hubspotutk", "hsforms.net"),
+    "google analytics": ("googletagmanager.com", "google-analytics.com", "gtag("),
+    "meta pixel": ("connect.facebook.net", "fbq("),
+    "wix": ("static.wixstatic.com", "wix.com"),
+    "squarespace": ("static1.squarespace.com", "squarespace.com"),
+    "webflow": ("webflow.js", "website-files.com"),
+    "cloudflare": ("cdnjs.cloudflare.com", "cloudflareinsights.com"),
+    "mailchimp": ("chimpstatic.com", "list-manage.com"),
+    "stripe": ("js.stripe.com", "stripe.com/v3"),
+    "servicetitan": ("servicetitan.com", "schedule.engine"),
+}
+
+SOCIAL_HOSTS = {
+    "linkedin.com": "linkedin",
+    "facebook.com": "facebook",
+    "instagram.com": "instagram",
+    "youtube.com": "youtube",
+    "youtu.be": "youtube",
+    "tiktok.com": "tiktok",
+    "x.com": "x",
+    "twitter.com": "x",
+}
+
+
+def detect_public_signals(pages: list[CrawledPage]) -> dict[str, object]:
+    html = "\n".join(page.html for page in pages).lower()
+    technologies = [
+        name for name, signatures in TECHNOLOGY_SIGNATURES.items()
+        if any(signature in html for signature in signatures)
+    ]
+    social_channels: list[str] = []
+    for match in re.findall(r"https?://[^\s\"'<>]+", html):
+        host = (urlparse(match).hostname or "").lower().removeprefix("www.")
+        for social_host, label in SOCIAL_HOSTS.items():
+            if host == social_host or host.endswith(f".{social_host}"):
+                social_channels.append(label)
+    ecommerce = any(signal in html for signal in ("add to cart", "shopping cart", "checkout", "product-price"))
+    careers_active = any(
+        signal in html
+        for signal in ("/careers", "/jobs", "job opening", "join our team", "we are hiring", "now hiring")
+    )
+    return {
+        "technologies": unique_phrases(technologies, limit=24),
+        "social_channels": unique_phrases(social_channels, limit=12),
+        "ecommerce": ecommerce,
+        "careers_active": careers_active,
+    }

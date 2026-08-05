@@ -20,6 +20,14 @@ class Seed(BaseModel):
     negative_penalty: float = 0.0
     similarity_reasons: str | None = None
     reference_domains: str | None = None
+    company_summary: str | None = None
+    technologies: str | None = None
+    social_channels: str | None = None
+    careers_active: bool = False
+    ecommerce: bool = False
+    year_founded: str | None = None
+    employee_size: str | None = None
+    headquarters: str | None = None
 
 
 class Lead(BaseModel):
@@ -50,3 +58,11 @@ class Lead(BaseModel):
     negative_penalty: float = 0.0
     similarity_reasons: str | None = None
     reference_domains: str | None = None
+    company_summary: str | None = None
+    technologies: str | None = None
+    social_channels: str | None = None
+    careers_active: bool = False
+    ecommerce: bool = False
+    year_founded: str | None = None
+    employee_size: str | None = None
+    headquarters: str | None = None

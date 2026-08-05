@@ -7,6 +7,7 @@ import os
 import statistics
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -31,6 +32,22 @@ class RankedCompany:
 
 
 @dataclass(frozen=True)
+class LookalikeFilters:
+    matching_mode: str = "precise"
+    industries_any: tuple[str, ...] = ()
+    industries_none: tuple[str, ...] = ()
+    keywords_any: tuple[str, ...] = ()
+    keywords_all: tuple[str, ...] = ()
+    keywords_none: tuple[str, ...] = ()
+    technologies_any: tuple[str, ...] = ()
+    technologies_all: tuple[str, ...] = ()
+    technologies_none: tuple[str, ...] = ()
+    require_hiring: bool = False
+    ecommerce_only: bool = False
+    updated_within_months: int = 12
+
+
+@dataclass(frozen=True)
 class LookalikeRun:
     query_id: str
     candidates_discovered: int
@@ -38,6 +55,8 @@ class LookalikeRun:
     ranked: list[RankedCompany]
     pages_by_domain: dict[str, list[CrawledPage]]
     discovery_queries: list[str]
+    filtered_count: int
+    usage: dict[str, int | float]
 
 
 def find_lookalikes(
@@ -51,6 +70,7 @@ def find_lookalikes(
     max_pages: int,
     min_score: float,
     catalog_path: Path,
+    filters: LookalikeFilters | None = None,
 ) -> LookalikeRun:
     if not get_openai_api_key():
         raise ValueError("OPENAI_API_KEY is required for like-for-like company embeddings.")
@@ -58,15 +78,22 @@ def find_lookalikes(
         raise ValueError("Add at least one ideal company website.")
 
     model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+    filters = filters or LookalikeFilters()
+    if filters.matching_mode not in {"precise", "broad"}:
+        raise ValueError("matching_mode must be precise or broad")
     catalog = CompanyCatalog(catalog_path)
     pages_by_domain: dict[str, list[CrawledPage]] = {}
 
-    positive_profiles, positive_embeddings, positive_domains = build_reference_set(
-        reference_urls, max_pages=max_pages, model=model, pages_by_domain=pages_by_domain
+    positive_profiles, positive_embeddings, positive_domains, positive_cached = build_reference_set(
+        reference_urls, max_pages=max_pages, model=model, pages_by_domain=pages_by_domain, catalog=catalog
     )
-    negative_profiles, negative_embeddings, negative_domains = build_reference_set(
-        negative_urls, max_pages=max_pages, model=model, pages_by_domain=pages_by_domain
-    ) if negative_urls else ([], [], set())
+    negative_profiles, negative_embeddings, negative_domains, negative_cached = build_reference_set(
+        negative_urls, max_pages=max_pages, model=model, pages_by_domain=pages_by_domain, catalog=catalog
+    ) if negative_urls else ([], [], set(), 0)
+
+    query_id = hashlib.sha256(
+        ("|".join(sorted(positive_domains)) + "::" + "|".join(sorted(negative_domains))).encode("utf-8")
+    ).hexdigest()[:16]
 
     combined = merge_profiles(positive_profiles)
     queries = discovery_queries(combined)
@@ -104,21 +131,26 @@ def find_lookalikes(
             catalog.upsert(company)
             existing[company.domain] = company
 
-    candidates = [company for domain, company in existing.items() if domain not in excluded and company.embedding]
+    all_candidates = [company for domain, company in existing.items() if domain not in excluded and company.embedding]
+    candidates = [company for company in all_candidates if company_matches_filters(company, filters)]
     ranked = [
-        score_company(company, positive_profiles, positive_embeddings, negative_profiles, negative_embeddings)
+        score_company(
+            company, positive_profiles, positive_embeddings, negative_profiles, negative_embeddings,
+            matching_mode=filters.matching_mode,
+        )
         for company in candidates
     ]
+    feedback = catalog.feedback_for_query(query_id)
+    ranked = [apply_feedback(item, feedback.get(item.company.domain, "")) for item in ranked]
     ranked.sort(key=lambda item: (-item.score, item.company.business_name, item.company.domain))
-    reranked = rerank_top(ranked[: max(15, max_results * 2)], positive_profiles, negative_profiles)
+    reranked = rerank_top(
+        ranked[: max(15, max_results * 2)], positive_profiles, negative_profiles, filters.matching_mode
+    )
     rerank_by_domain = {item.company.domain: item for item in reranked}
     ranked = [rerank_by_domain.get(item.company.domain, item) for item in ranked]
     ranked.sort(key=lambda item: (-item.score, item.company.business_name, item.company.domain))
     ranked = [item for item in ranked if item.score >= min_score][:max_results]
 
-    query_id = hashlib.sha256(
-        ("|".join(sorted(positive_domains)) + "::" + "|".join(sorted(negative_domains))).encode("utf-8")
-    ).hexdigest()[:16]
     return LookalikeRun(
         query_id=query_id,
         candidates_discovered=len(places),
@@ -126,18 +158,37 @@ def find_lookalikes(
         ranked=ranked,
         pages_by_domain=pages_by_domain,
         discovery_queries=queries,
+        filtered_count=len(all_candidates) - len(candidates),
+        usage={
+            "google_queries": len(queries),
+            "fresh_candidates": len(places),
+            "websites_profiled": len(new_companies) + len(reference_urls) + len(negative_urls) - positive_cached - negative_cached,
+            "reference_cache_hits": positive_cached + negative_cached,
+            "embedding_batches": 1 + (1 if new_companies else 0),
+            "estimated_openai_calls": len(new_companies) + len(reference_urls) + len(negative_urls) - positive_cached - negative_cached + 2,
+        },
     )
 
 
 def build_reference_set(
-    urls: list[str], max_pages: int, model: str, pages_by_domain: dict[str, list[CrawledPage]]
-) -> tuple[list[CompanyProfile], list[list[float]], set[str]]:
+    urls: list[str], max_pages: int, model: str, pages_by_domain: dict[str, list[CrawledPage]],
+    catalog: CompanyCatalog,
+) -> tuple[list[CompanyProfile], list[list[float]], set[str], int]:
     profiles: list[CompanyProfile] = []
+    embeddings: list[list[float]] = []
     domains: set[str] = set()
+    cache_hits = 0
     for url in urls:
         valid = validate_public_url(url)
         domain = domain_of(valid)
         if domain in domains:
+            continue
+        cached = catalog.get(domain)
+        if cached and cached.embedding_model == model and is_fresh(cached.updated_at, months=6):
+            domains.add(domain)
+            profiles.append(cached.profile)
+            embeddings.append(cached.embedding)
+            cache_hits += 1
             continue
         pages = crawl_site(valid, max_pages=max_pages, timeout=12.0)
         if not pages:
@@ -145,8 +196,12 @@ def build_reference_set(
         domains.add(domain)
         pages_by_domain[domain] = pages
         seed = Seed(url=valid, business_name=domain)
-        profiles.append(profile_company(seed, pages))
-    return profiles, embed_texts([profile.canonical_text() for profile in profiles], model), domains
+        profile = profile_company(seed, pages)
+        embedding = embed_texts([profile.canonical_text()], model)[0]
+        profiles.append(profile)
+        embeddings.append(embedding)
+        catalog.upsert(catalog_company(seed, profile, embedding, model))
+    return profiles, embeddings, domains, cache_hits
 
 
 def profile_candidate(seed: Seed, max_pages: int) -> tuple[Seed, CompanyProfile, list[CrawledPage]] | None:
@@ -182,6 +237,7 @@ def score_company(
     positive_embeddings: list[list[float]],
     negative_profiles: list[CompanyProfile],
     negative_embeddings: list[list[float]],
+    matching_mode: str = "precise",
 ) -> RankedCompany:
     similarities = [cosine_similarity(company.embedding, embedding) for embedding in positive_embeddings]
     semantic = 0.6 * statistics.median(similarities) + 0.4 * max(similarities)
@@ -198,7 +254,14 @@ def score_company(
         ],
         default=0.0,
     )
-    raw = 0.62 * semantic + 0.25 * profile_score + 0.13 * lexical - 0.20 * negative
+    if matching_mode == "broad":
+        industry_overlap = phrase_overlap(
+            [company.profile.industry, company.category],
+            [profile.industry for profile in positive_profiles],
+        ) or 0.0
+        raw = 0.45 * semantic + 0.25 * profile_score + 0.20 * industry_overlap + 0.10 * lexical - 0.20 * negative
+    else:
+        raw = 0.62 * semantic + 0.25 * profile_score + 0.13 * lexical - 0.20 * negative
     score = round(max(0.0, min(100.0, raw * 100)), 1)
     return RankedCompany(
         company=company,
@@ -212,13 +275,15 @@ def score_company(
 
 
 def rerank_top(
-    ranked: list[RankedCompany], positives: list[CompanyProfile], negatives: list[CompanyProfile]
+    ranked: list[RankedCompany], positives: list[CompanyProfile], negatives: list[CompanyProfile],
+    matching_mode: str = "precise",
 ) -> list[RankedCompany]:
     if not ranked or not get_openai_api_key():
         return ranked
     payload = {
         "ideal_companies": [profile.model_dump() for profile in positives],
         "not_like_companies": [profile.model_dump() for profile in negatives],
+        "matching_mode": matching_mode,
         "candidates": [
             {
                 "domain": item.company.domain,
@@ -228,9 +293,10 @@ def rerank_top(
             for item in ranked
         ],
         "instructions": (
-            "Judge like-for-like company fit from 0 to 100. Reward matching services, customer type, business model, "
-            "and specialties. Penalize contradictions and similarity to not-like examples. Do not reward geography "
-            "or shared generic words by themselves. Give 1 to 3 short factual reasons. Return every candidate once."
+            "Judge like-for-like company fit from 0 to 100. In precise mode, strongly reward matching products, "
+            "services, customer type, business model, and specialties. In broad mode, allow companies in the same "
+            "industry family even when specialties differ. Penalize contradictions and similarity to not-like examples. "
+            "Do not reward geography or shared generic words by themselves. Give 1 to 3 factual reasons."
         ),
     }
     try:
@@ -347,6 +413,69 @@ def terms(values: list[str]) -> set[str]:
     return {word for value in values for word in value.lower().replace("/", " ").replace("-", " ").split() if len(word) > 2}
 
 
+def company_matches_filters(company: CatalogCompany, filters: LookalikeFilters) -> bool:
+    profile = company.profile
+    industry_terms = terms([company.category, profile.industry])
+    keyword_terms = terms(profile.keywords + profile.services + profile.specialties + [profile.summary])
+    technology_terms = {value.lower() for value in profile.technologies}
+
+    if filters.industries_any and not industry_terms.intersection(terms(list(filters.industries_any))):
+        return False
+    if filters.industries_none and industry_terms.intersection(terms(list(filters.industries_none))):
+        return False
+    if filters.keywords_any and not keyword_terms.intersection(terms(list(filters.keywords_any))):
+        return False
+    if filters.keywords_all and not terms(list(filters.keywords_all)).issubset(keyword_terms):
+        return False
+    if filters.keywords_none and keyword_terms.intersection(terms(list(filters.keywords_none))):
+        return False
+
+    any_technologies = {value.lower() for value in filters.technologies_any}
+    all_technologies = {value.lower() for value in filters.technologies_all}
+    no_technologies = {value.lower() for value in filters.technologies_none}
+    if any_technologies and not technology_terms.intersection(any_technologies):
+        return False
+    if all_technologies and not all_technologies.issubset(technology_terms):
+        return False
+    if no_technologies and technology_terms.intersection(no_technologies):
+        return False
+    if filters.require_hiring and not profile.careers_active:
+        return False
+    if filters.ecommerce_only and not profile.ecommerce:
+        return False
+    if filters.updated_within_months and not is_fresh(company.updated_at, filters.updated_within_months):
+        return False
+    return True
+
+
+def apply_feedback(item: RankedCompany, label: str) -> RankedCompany:
+    if label not in {"fit", "not_fit"}:
+        return item
+    adjustment = 8.0 if label == "fit" else -35.0
+    reason = "Previously marked as a fit" if label == "fit" else "Previously marked as not a fit"
+    return RankedCompany(
+        company=item.company,
+        score=round(max(0.0, min(100.0, item.score + adjustment)), 1),
+        semantic_score=item.semantic_score,
+        profile_score=item.profile_score,
+        lexical_score=item.lexical_score,
+        negative_penalty=item.negative_penalty,
+        reasons=[reason, *item.reasons][:3],
+    )
+
+
+def is_fresh(updated_at: str, months: int) -> bool:
+    if not updated_at:
+        return False
+    try:
+        value = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return False
+    return value >= datetime.now(timezone.utc) - timedelta(days=max(1, months) * 30)
+
+
 def similarity_reasons(candidate: CompanyProfile, ideal: CompanyProfile) -> list[str]:
     reasons: list[str] = []
     shared_services = sorted(terms(candidate.services) & terms(ideal.services))
@@ -398,11 +527,13 @@ def catalog_company(seed: Seed, profile: CompanyProfile, embedding: list[float],
         domain=domain_of(url), url=url, place_id=seed.place_id or "", business_name=seed.business_name or "",
         phone=seed.phone or "", address=seed.address or "", city=seed.city or "", state=seed.state or "",
         category=seed.category or profile.industry, profile=profile, embedding=embedding, embedding_model=model,
+        updated_at=datetime.now(timezone.utc).isoformat(),
     )
 
 
-def ranked_seed(item: RankedCompany, query_id: str, reference_domains: list[str]) -> dict[str, str | float]:
+def ranked_seed(item: RankedCompany, query_id: str, reference_domains: list[str]) -> dict[str, object]:
     company = item.company
+    profile = company.profile
     return {
         "url": company.url,
         "place_id": company.place_id,
@@ -420,4 +551,12 @@ def ranked_seed(item: RankedCompany, query_id: str, reference_domains: list[str]
         "negative_penalty": item.negative_penalty,
         "similarity_reasons": "; ".join(item.reasons),
         "reference_domains": "; ".join(reference_domains),
+        "company_summary": profile.summary,
+        "technologies": "; ".join(profile.technologies),
+        "social_channels": "; ".join(profile.social_channels),
+        "careers_active": profile.careers_active,
+        "ecommerce": profile.ecommerce,
+        "year_founded": profile.year_founded,
+        "employee_size": profile.employee_size,
+        "headquarters": profile.headquarters,
     }

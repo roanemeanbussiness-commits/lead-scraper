@@ -25,6 +25,7 @@ class CatalogCompany:
     profile: CompanyProfile
     embedding: list[float]
     embedding_model: str
+    updated_at: str = ""
 
 
 class CompanyCatalog:
@@ -36,7 +37,7 @@ class CompanyCatalog:
         with self._connection() as connection:
             row = connection.execute(
                 "SELECT domain, url, place_id, business_name, phone, address, city, state, category, "
-                "profile_json, embedding_blob, embedding_model FROM company_profiles WHERE domain = ?",
+                "profile_json, embedding_blob, embedding_model, updated_at FROM company_profiles WHERE domain = ?",
                 (domain.lower(),),
             ).fetchone()
         return self._from_row(row) if row else None
@@ -44,7 +45,7 @@ class CompanyCatalog:
     def list(self, state: str = "") -> list[CatalogCompany]:
         query = (
             "SELECT domain, url, place_id, business_name, phone, address, city, state, category, "
-            "profile_json, embedding_blob, embedding_model FROM company_profiles"
+            "profile_json, embedding_blob, embedding_model, updated_at FROM company_profiles"
         )
         params: tuple[str, ...] = ()
         if state.strip():
@@ -87,6 +88,29 @@ class CompanyCatalog:
         with self._connection() as connection:
             return int(connection.execute("SELECT COUNT(*) FROM company_profiles").fetchone()[0])
 
+    def record_feedback(self, query_id: str, domain: str, label: str) -> None:
+        if label not in {"fit", "not_fit"}:
+            raise ValueError("feedback label must be fit or not_fit")
+        with self._connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO lookalike_feedback (query_id, domain, label, updated_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(query_id, domain) DO UPDATE SET
+                    label = excluded.label,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (query_id, domain.lower(), label),
+            )
+
+    def feedback_for_query(self, query_id: str) -> dict[str, str]:
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT domain, label FROM lookalike_feedback WHERE query_id = ?",
+                (query_id,),
+            ).fetchall()
+        return {domain: label for domain, label in rows}
+
     def _initialize(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connection() as connection:
@@ -111,6 +135,17 @@ class CompanyCatalog:
             )
             connection.execute("CREATE INDEX IF NOT EXISTS idx_company_profiles_state ON company_profiles(state)")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_company_profiles_place ON company_profiles(place_id)")
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS lookalike_feedback (
+                    query_id TEXT NOT NULL,
+                    domain TEXT NOT NULL,
+                    label TEXT NOT NULL CHECK(label IN ('fit', 'not_fit')),
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (query_id, domain)
+                )
+                """
+            )
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
@@ -128,7 +163,7 @@ class CompanyCatalog:
         return CatalogCompany(
             domain=row[0], url=row[1], place_id=row[2], business_name=row[3], phone=row[4], address=row[5],
             city=row[6], state=row[7], category=row[8], profile=CompanyProfile.model_validate_json(row[9]),
-            embedding=decode_embedding(row[10]), embedding_model=row[11],
+            embedding=decode_embedding(row[10]), embedding_model=row[11], updated_at=row[12],
         )
 
 

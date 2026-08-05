@@ -33,6 +33,27 @@ The 8-Thon implementation follows a two-stage retrieval and reranking design:
 9. Use a bounded LLM pass to rerank only the best candidates and produce factual fit reasons.
 10. Reuse crawled pages for owner and direct-email enrichment, then export CSV.
 
+The Claude teardown supplied after the first implementation highlighted Ocean's structured filter taxonomy and crawl-on-demand behavior. Version 0.4 incorporates the recommendations that are supportable from the project's current public-web data:
+
+- `precise` and `broad` matching modes
+- compound industry and any/all/none keyword filtering through normalized fingerprint fields
+- technology include/exclude filters using deterministic page-source signatures
+- active-hiring, social-presence, and e-commerce signals
+- catalog freshness filters and six-month reference-profile caching
+- query-specific Fit / Not fit feedback that adjusts future ranking
+- preview-first scored results and estimated API-call transparency
+- richer CSV company records, including summary, technology, social, hiring, commerce, founding-year, stated-size, and headquarters fields
+
+Revenue, funding, traffic, employee-growth, and department-growth filters are intentionally not fabricated. They require licensed sources, reliable registries, or repeated historical observations. LinkedIn people data is also not scraped because the project does not have a licensed source. SMTP mailbox probing and email sending remain outside this scraper-only product.
+
+## Interface Research
+
+Ocean's public product screenshots show a compact filter rail, precise-company-match controls, and a scored company table with quick actions. The 8-Thon dashboard adopts that operational pattern while using its own branding, copy, colors, and code. It does not reproduce Ocean trademarks or protected visual assets.
+
+- [Ocean AI Company Search](https://www.ocean.io/features/ai-company-search)
+- [Ocean current lookalike workflow](https://www.ocean.io/)
+- [Clay preview-based Ocean integration](https://www.clay.com/changelog/ocean-io)
+
 The final base score is deliberately inspectable:
 
 - 62% embedding similarity across the positive examples

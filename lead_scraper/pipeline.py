@@ -118,6 +118,14 @@ def run_pipeline(
                     negative_penalty=seed.negative_penalty,
                     similarity_reasons=seed.similarity_reasons,
                     reference_domains=seed.reference_domains,
+                    company_summary=seed.company_summary,
+                    technologies=seed.technologies,
+                    social_channels=seed.social_channels,
+                    careers_active=seed.careers_active,
+                    ecommerce=seed.ecommerce,
+                    year_founded=seed.year_founded,
+                    employee_size=seed.employee_size,
+                    headquarters=seed.headquarters,
                 )
                 existing = leads.get(key)
                 if existing is None or candidate.confidence > existing.confidence:
@@ -178,6 +186,14 @@ def read_seeds(path: Path) -> list[Seed]:
                         negative_penalty=row.get("negative_penalty") or 0,
                         similarity_reasons=row.get("similarity_reasons") or None,
                         reference_domains=row.get("reference_domains") or None,
+                        company_summary=row.get("company_summary") or None,
+                        technologies=row.get("technologies") or None,
+                        social_channels=row.get("social_channels") or None,
+                        careers_active=parse_bool(row.get("careers_active")),
+                        ecommerce=parse_bool(row.get("ecommerce")),
+                        year_founded=row.get("year_founded") or None,
+                        employee_size=row.get("employee_size") or None,
+                        headquarters=row.get("headquarters") or None,
                     )
                 )
             except ValidationError as exc:
@@ -194,3 +210,7 @@ def write_leads(path: Path, leads: Iterable[Lead]) -> None:
         writer.writeheader()
         for lead in sorted_leads:
             writer.writerow(lead.model_dump())
+
+
+def parse_bool(value: str | None) -> bool:
+    return (value or "").strip().lower() in {"1", "true", "yes", "on"}

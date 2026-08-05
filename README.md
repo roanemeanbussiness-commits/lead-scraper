@@ -19,6 +19,11 @@ Use the dashboard's default Lookalike mode to paste ideal-company websites and f
 - Ranks candidates with OpenAI embeddings, service/customer/business-model overlap, optional negative examples, and a bounded reranking pass.
 - Stores compact company profiles and float32 embeddings in a persistent SQLite catalog so each run improves future coverage.
 - Exports inspectable lookalike scores and reasons with the lead rows.
+- Supports `precise` product/service matching and broader industry-family matching.
+- Applies compound industry, keyword, technology, hiring, commerce, freshness, and negative-example filters.
+- Detects common website technologies, social channels, e-commerce markers, and active hiring from public pages.
+- Caches reference-company fingerprints and reports estimated API work for each search.
+- Learns from query-specific Fit / Not fit feedback without globally blacklisting a company.
 - Optionally verifies email domains with MX record checks.
 - Filters out common low-value addresses like image assets and placeholders.
 - Scores leads for Texas, San Antonio, and blue-collar trade relevance.
@@ -60,6 +65,8 @@ In the dashboard's Lookalike tab:
 4. Run the search, review the ranked matches, and download the direct-email lead CSV.
 
 The user does not provide a keyword. The agent profiles the reference websites, creates several discovery strategies, ranks both new candidates and its saved company catalog, and carries the fit factors into the CSV. See `docs/lookalike-research.md` for architecture, research, limitations, and future free-data imports.
+
+The dashboard uses a dense prospecting workbench inspired by Ocean.io's public company-search workflow: filters on the left, preview-first scored results on the right, and direct CSV export. It retains 8-Thon branding and does not use Ocean assets or claim access to Ocean's proprietary data.
 
 ## Seed CSV Format
 
