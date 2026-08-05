@@ -19,6 +19,8 @@ class ExporterTests(unittest.TestCase):
                 "city": "Charlotte",
                 "state": "NC",
                 "category": "landscaping",
+                "lookalike_score": "87.4",
+                "similarity_reasons": "Shared commercial landscaping services",
             },
             {"business_name": "green thumb", "email": "info@greenthumb.com"},
             {"business_name": "summit lawn", "email": "sales-us@summitlawn.com"},
@@ -33,6 +35,7 @@ class ExporterTests(unittest.TestCase):
         self.assertEqual("Marcus", cleaned[0]["first_name"])
         self.assertEqual("Charlotte, NC", cleaned[0]["location"])
         self.assertEqual("marcus@apexlandscaping.com", cleaned[0]["verified_email"])
+        self.assertEqual("87.4", cleaned[0]["lookalike_score"])
 
     def test_generic_email_detection_handles_prefix_variants(self) -> None:
         self.assertFalse(is_generic_email("owner@example.com"))

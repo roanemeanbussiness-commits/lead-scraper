@@ -2,7 +2,7 @@
 
 A focused public-web lead scraper for blue-collar businesses in Texas, starting with San Antonio.
 
-Use the dashboard to search Google Maps by business type and location, or provide business websites directly. The scraper crawls likely contact pages, extracts public emails, enriches owner/email/opener fields when OpenAI is configured, validates email domains when requested, and exports deduplicated CSV leads.
+Use the dashboard's default Lookalike mode to paste ideal-company websites and find similar Texas businesses, or use the legacy keyword mode. The scraper crawls likely contact pages, extracts public emails, enriches owner/email/opener fields when OpenAI is configured, validates email domains when requested, and exports deduplicated CSV leads.
 
 ## What It Does
 
@@ -15,6 +15,10 @@ Use the dashboard to search Google Maps by business type and location, or provid
 - Decodes Cloudflare-protected and common `[at]` / `[dot]` email formats.
 - Validates public URLs and redirects, respects `robots.txt`, limits response sizes, and retries transient failures.
 - Paginates Google Places Text Search up to its 60-result limit and retains stable Place IDs.
+- Builds structured company fingerprints from several ideal-company websites.
+- Ranks candidates with OpenAI embeddings, service/customer/business-model overlap, optional negative examples, and a bounded reranking pass.
+- Stores compact company profiles and float32 embeddings in a persistent SQLite catalog so each run improves future coverage.
+- Exports inspectable lookalike scores and reasons with the lead rows.
 - Optionally verifies email domains with MX record checks.
 - Filters out common low-value addresses like image assets and placeholders.
 - Scores leads for Texas, San Antonio, and blue-collar trade relevance.
@@ -28,9 +32,10 @@ Set these in your local shell or Fly.io secrets:
 GOOGLE_MAPS_API_KEY=your_google_maps_key
 OPENAI_API_KEY=your_openai_key
 OPENAI_MODEL=gpt-4o-mini
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 ```
 
-`GOOGLE_MAPS_API_KEY` powers Google Places search from the dashboard. `OPENAI_API_KEY` is optional but improves owner-name, direct-email, and custom-opener enrichment.
+`GOOGLE_MAPS_API_KEY` powers candidate expansion through Google Places. `OPENAI_API_KEY` is required for Lookalike mode and optional for keyword-mode owner-name, direct-email, and custom-opener enrichment.
 
 The app also recognizes legacy Fly secret aliases `GooglePlacesAPI`, `GOOGLE_PLACES_API_KEY`, `OpenAI_api`, and `OPENAI_API`.
 
@@ -43,7 +48,18 @@ pip install -r requirements.txt
 python -m lead_scraper scrape --seeds data/sample_seeds.csv --out output/leads.csv
 ```
 
-The scraper keeps memory in `data/lead_history.db` by default. SQLite tracks exported emails, domains, and Google Place IDs so future runs do not re-scrape the same usable leads. Legacy CSV history paths remain supported.
+The scraper keeps lead memory in `data/lead_history.db` and lookalike company memory in `data/company_catalog.db` by default. SQLite tracks exported emails, domains, Google Place IDs, company fingerprints, and embeddings. Legacy CSV lead-history paths remain supported.
+
+## Lookalike Search
+
+In the dashboard's Lookalike tab:
+
+1. Paste one ideal company URL per line. Two to four examples usually define a better shared ICP than one.
+2. Optionally paste companies that should not match.
+3. Choose the target market, candidate-pool size, result count, and minimum score.
+4. Run the search, review the ranked matches, and download the direct-email lead CSV.
+
+The user does not provide a keyword. The agent profiles the reference websites, creates several discovery strategies, ranks both new candidates and its saved company catalog, and carries the fit factors into the CSV. See `docs/lookalike-research.md` for architecture, research, limitations, and future free-data imports.
 
 ## Seed CSV Format
 
@@ -92,7 +108,7 @@ The dashboard at `/` can start a scrape and return a downloadable CSV.
 
 Search by business type and location, or paste one business website URL per line, then download `scraped_leads.csv`. Use the dashboard's MX option when you want stricter email-domain validation.
 
-Fly mounts the `lead_data` volume at `/data`, where the SQLite history survives deploys and Machine restarts.
+Fly mounts the `lead_data` volume at `/data`, where the lead history and company catalog survive deploys and Machine restarts.
 
 ## Auto Deploy
 

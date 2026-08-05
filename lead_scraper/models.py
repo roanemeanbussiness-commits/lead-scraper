@@ -12,6 +12,14 @@ class Seed(BaseModel):
     city: str | None = None
     state: str | None = None
     category: str | None = None
+    lookalike_query_id: str | None = None
+    lookalike_score: float = 0.0
+    semantic_score: float = 0.0
+    profile_score: float = 0.0
+    lexical_score: float = 0.0
+    negative_penalty: float = 0.0
+    similarity_reasons: str | None = None
+    reference_domains: str | None = None
 
 
 class Lead(BaseModel):
@@ -34,3 +42,11 @@ class Lead(BaseModel):
     blue_collar_signals: str = ""
     texas_signals: str = ""
     confidence: int = 0
+    lookalike_query_id: str | None = None
+    lookalike_score: float = 0.0
+    semantic_score: float = 0.0
+    profile_score: float = 0.0
+    lexical_score: float = 0.0
+    negative_penalty: float = 0.0
+    similarity_reasons: str | None = None
+    reference_domains: str | None = None

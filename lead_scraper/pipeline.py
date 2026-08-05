@@ -33,6 +33,7 @@ def run_pipeline(
     dedupe: str,
     max_pages: int,
     timeout: float,
+    pages_by_domain: dict[str, list[CrawledPage]] | None = None,
 ) -> int:
     if dedupe not in {"none", "email", "domain", "email_or_domain"}:
         raise ValueError("dedupe must be one of: none, email, domain, email_or_domain")
@@ -49,7 +50,10 @@ def run_pipeline(
 
         try:
             validate_public_url(seed_url)
-            pages = crawl_site(seed_url, max_pages=max_pages, timeout=timeout)
+            cached_pages = (pages_by_domain or {}).get(seed_domain)
+            pages = cached_pages if cached_pages is not None else crawl_site(
+                seed_url, max_pages=max_pages, timeout=timeout
+            )
         except UnsafeURL:
             continue
         analyses = [analyze_page(seed, page) for page in pages]
@@ -106,6 +110,14 @@ def run_pipeline(
                     blue_collar_signals=", ".join(analysis.blue_signals),
                     texas_signals=", ".join(analysis.texas_signals),
                     confidence=analysis.confidence,
+                    lookalike_query_id=seed.lookalike_query_id,
+                    lookalike_score=seed.lookalike_score,
+                    semantic_score=seed.semantic_score,
+                    profile_score=seed.profile_score,
+                    lexical_score=seed.lexical_score,
+                    negative_penalty=seed.negative_penalty,
+                    similarity_reasons=seed.similarity_reasons,
+                    reference_domains=seed.reference_domains,
                 )
                 existing = leads.get(key)
                 if existing is None or candidate.confidence > existing.confidence:
@@ -158,6 +170,14 @@ def read_seeds(path: Path) -> list[Seed]:
                         city=row.get("city"),
                         state=row.get("state"),
                         category=row.get("category") or row.get("trade"),
+                        lookalike_query_id=row.get("lookalike_query_id") or None,
+                        lookalike_score=row.get("lookalike_score") or 0,
+                        semantic_score=row.get("semantic_score") or 0,
+                        profile_score=row.get("profile_score") or 0,
+                        lexical_score=row.get("lexical_score") or 0,
+                        negative_penalty=row.get("negative_penalty") or 0,
+                        similarity_reasons=row.get("similarity_reasons") or None,
+                        reference_domains=row.get("reference_domains") or None,
                     )
                 )
             except ValidationError as exc:

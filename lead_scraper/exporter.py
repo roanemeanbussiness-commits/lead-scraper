@@ -22,6 +22,14 @@ LEAD_EXPORT_FIELDNAMES = [
     "custom_opener",
     "source",
     "place_id",
+    "lookalike_query_id",
+    "lookalike_score",
+    "semantic_score",
+    "profile_score",
+    "lexical_score",
+    "negative_penalty",
+    "similarity_reasons",
+    "reference_domains",
 ]
 
 
@@ -79,6 +87,14 @@ def clean_direct_leads(
                 "custom_opener": clean(lead.get("custom_opener")),
                 "source": clean(lead.get("source")) or "Web Scraper",
                 "place_id": clean(lead.get("place_id")),
+                "lookalike_query_id": clean(lead.get("lookalike_query_id")),
+                "lookalike_score": clean(lead.get("lookalike_score")),
+                "semantic_score": clean(lead.get("semantic_score")),
+                "profile_score": clean(lead.get("profile_score")),
+                "lexical_score": clean(lead.get("lexical_score")),
+                "negative_penalty": clean(lead.get("negative_penalty")),
+                "similarity_reasons": clean(lead.get("similarity_reasons")),
+                "reference_domains": clean(lead.get("reference_domains")),
             }
         )
 

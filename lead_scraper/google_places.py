@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import math
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 import httpx
 
@@ -92,6 +94,28 @@ def search_google_places(query: str, location: str, max_results: int = 20) -> li
             seen_page_tokens.add(page_token)
 
     return leads
+
+
+def search_google_places_queries(queries: list[str], location: str, max_results: int = 40) -> list[PlaceLead]:
+    """Search several semantic discovery queries and dedupe the shared candidate pool."""
+    clean_queries = list(dict.fromkeys(query.strip() for query in queries if query.strip()))
+    if not clean_queries or max_results <= 0:
+        return []
+
+    per_query = min(20, max(4, math.ceil(max_results / len(clean_queries))))
+    results: list[PlaceLead] = []
+    seen: set[str] = set()
+    for query in clean_queries:
+        for place in search_google_places(query, location, max_results=per_query):
+            domain = (urlparse(place.website).hostname or "").lower().removeprefix("www.")
+            key = place.place_id or domain
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            results.append(place)
+            if len(results) >= max_results:
+                return results
+    return results
 
 
 def get_google_maps_api_key() -> str:

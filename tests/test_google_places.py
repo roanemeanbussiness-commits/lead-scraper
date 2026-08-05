@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock, patch
 
-from lead_scraper.google_places import search_google_places
+from lead_scraper.google_places import PlaceLead, search_google_places, search_google_places_queries
 
 
 class GooglePlacesTests(unittest.TestCase):
@@ -40,6 +40,20 @@ class GooglePlacesTests(unittest.TestCase):
         self.assertEqual("next-token", client.post.call_args_list[1].kwargs["json"]["pageToken"])
         first.raise_for_status.assert_called_once()
         second.raise_for_status.assert_called_once()
+
+    @patch("lead_scraper.google_places.search_google_places")
+    def test_multi_query_search_deduplicates_shared_domains(self, search: MagicMock) -> None:
+        search.side_effect = [
+            [PlaceLead("places/one", "One", "https://one.example")],
+            [
+                PlaceLead("places/one", "One duplicate", "https://one.example"),
+                PlaceLead("places/two", "Two", "https://two.example"),
+            ],
+        ]
+
+        leads = search_google_places_queries(["roof repair", "commercial roofer"], "San Antonio, TX", 10)
+
+        self.assertEqual(["places/one", "places/two"], [lead.place_id for lead in leads])
 
 
 if __name__ == "__main__":

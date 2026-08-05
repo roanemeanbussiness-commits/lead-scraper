@@ -11,6 +11,8 @@ primary_region = 'iad'
 
 [env]
   LEAD_HISTORY_PATH = '/data/lead_history.db'
+  COMPANY_CATALOG_PATH = '/data/company_catalog.db'
+  OPENAI_EMBEDDING_MODEL = 'text-embedding-3-small'
 
 [mounts]
   source = 'lead_data'
