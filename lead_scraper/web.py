@@ -29,6 +29,7 @@ from .ocean import (
 app = FastAPI(title="8-Thon Intelligence Ocean Lead Scraper")
 SEARCH_LOCK = Lock()
 MAX_EMAIL_SEARCH_ROUNDS = 6
+MIN_SEARCH_CREDITS = 25.0
 VERIFIED_EMAIL_STATUSES = {"verified", "valid"}
 DEFAULT_DATA_PATH = Path("/data") if os.name != "nt" and Path("/data").exists() else Path("data")
 JOB_MANAGER = JobManager(Path(os.getenv("JOB_OUTPUT_PATH", str(DEFAULT_DATA_PATH / "jobs"))))
@@ -227,6 +228,19 @@ def execute_ocean_search(
         companies_filters = build_company_filters(request)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        available = ocean.available_credits()
+    except OceanAPIError:
+        available = -1.0
+    if 0 <= available < MIN_SEARCH_CREDITS:
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"Ocean.io has {available:g} credits left, below the {MIN_SEARCH_CREDITS:g} "
+                "needed to run a search. Top up credits at ocean.io before searching."
+            ),
+        )
+
     seen_domains = set(negatives).union(history.recent_domains(request.dedupe_months))
     seen_people = set(history.recent_people(request.dedupe_months))
     people_filters = build_people_filters(request)
@@ -235,6 +249,7 @@ def execute_ocean_search(
     contacts: list[dict[str, object]] = []
     reveal_complete = True
     ocean_total = 0
+    stopped_early = ""
     max_rounds = (
         MAX_EMAIL_SEARCH_ROUNDS
         if email_target and request.find_contacts and request.reveal_emails
@@ -265,7 +280,10 @@ def execute_ocean_search(
                 exclude_domains=sorted(seen_domains),
             )
         except OceanAPIError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+            if not company_payloads:
+                raise HTTPException(status_code=502, detail=str(exc)) from exc
+            stopped_early = str(exc)
+            break
         ocean_total = max(ocean_total, company_page.total)
         round_companies = [
             company
@@ -301,7 +319,8 @@ def execute_ocean_search(
                 people_per_company=request.people_per_company,
             )
         except OceanAPIError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+            stopped_early = str(exc)
+            break
         round_contacts = [
             contact
             for contact in (person_payload(person) for person in dedupe_people(people_page.records))
@@ -318,7 +337,12 @@ def execute_ocean_search(
                 "Ocean email reveal",
                 "Requesting verified contact emails",
             )
-            round_complete = attach_revealed_emails(ocean, history, round_contacts, report)
+            try:
+                round_complete = attach_revealed_emails(ocean, history, round_contacts, report)
+            except HTTPException as exc:
+                stopped_early = str(exc.detail)
+                reveal_complete = False
+                break
             reveal_complete = reveal_complete and round_complete
 
         if not email_target or count_verified(contacts) >= email_target:
@@ -367,6 +391,7 @@ def execute_ocean_search(
         "target_achieved": achieved,
         "target_met": achieved >= request.target_count,
         "reveal_complete": reveal_complete,
+        "stopped_early": stopped_early,
         "estimated_standard_credits": round((len(matches) + len(contacts)) * 0.2, 1),
         "estimated_email_credits": direct_count,
         "csv": csv_text,

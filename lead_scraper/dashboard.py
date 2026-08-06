@@ -156,6 +156,22 @@ def render_dashboard(version: str, ocean_configured: bool) -> str:
         </div>
       </details>
 
+      <details open data-filter="preset industry vertical pay per call template">
+        <summary><i data-lucide="wand-sparkles"></i>Presets</summary>
+        <div class="details-body">
+          <label for="preset">Fill filters for a known niche</label>
+          <select id="preset">
+            <option value="">Choose a preset...</option>
+            <option value="pay_per_call">Pay-per-call lead gen</option>
+            <option value="ppc_insurance">Pay-per-call: insurance</option>
+            <option value="ppc_home_services">Pay-per-call: home services</option>
+            <option value="ppc_legal">Pay-per-call: legal</option>
+            <option value="ppc_medicare">Pay-per-call: Medicare</option>
+          </select>
+          <p class="subtle" style="margin-top:8px">Presets overwrite keywords, industries, technologies, sizes and job titles. Location stays as you set it.</p>
+        </div>
+      </details>
+
       <details open data-filter="target count companies emails credits">
         <summary><i data-lucide="gauge"></i>Search volume</summary>
         <div class="details-body">
@@ -280,6 +296,31 @@ def render_dashboard(version: str, ocean_configured: bool) -> str:
     }};
   }}
 
+  const PPC_CALL_TECH = "Ringba, Retreaver, Invoca, CallRail, Trackdrive, Boberdoo, LeadsPedia";
+  const PPC_BASE = {{
+    keywords_any:"pay per call, pay-per-call, call generation, inbound calls, live transfer, call transfer, performance marketing, lead generation",
+    keywords_none:"answering service, call center outsourcing, BPO, help desk, IT support",
+    industries_any:"Marketing & Advertising, Online Media",
+    industries_none:"",
+    technologies_any:PPC_CALL_TECH,
+    company_sizes:"2-10, 11-50, 51-200",
+    job_titles:"founder, owner, CEO, president, VP sales, media buyer, affiliate manager, publisher manager",
+    seniorities:"Owner, Founder, C-Level, Partner, VP, Head, Director"
+  }};
+  const PRESETS = {{
+    pay_per_call: PPC_BASE,
+    ppc_insurance: {{...PPC_BASE, keywords_any:PPC_BASE.keywords_any+", insurance leads, auto insurance calls, final expense, life insurance leads"}},
+    ppc_home_services: {{...PPC_BASE, keywords_any:PPC_BASE.keywords_any+", home services leads, roofing leads, HVAC leads, solar leads, restoration leads"}},
+    ppc_legal: {{...PPC_BASE, keywords_any:PPC_BASE.keywords_any+", legal leads, mass tort, personal injury leads, attorney marketing"}},
+    ppc_medicare: {{...PPC_BASE, keywords_any:PPC_BASE.keywords_any+", medicare leads, medicare advantage calls, ACA leads, health insurance calls"}}
+  }};
+  $("#preset").addEventListener("change", event => {{
+    const preset=PRESETS[event.target.value];
+    if(!preset) return;
+    Object.entries(preset).forEach(([field,value])=>{{ const input=$("#"+field); if(input) input.value=value; }});
+    $$("details").forEach(item=>{{ if((item.dataset.filter||"").includes("industry")||(item.dataset.filter||"").includes("technologies")) item.open=true; }});
+  }});
+
   $$(".mode-btn").forEach(button => button.addEventListener("click", () => {{ state.mode=button.dataset.mode; $$(".mode-btn").forEach(item=>item.classList.toggle("active",item===button)); $("#reference-field").classList.toggle("hidden",state.mode!=="lookalike"); }}));
   $$(".result-tab").forEach(button => button.addEventListener("click", () => {{ state.view=button.dataset.view; render(); }}));
   $("#result-search").addEventListener("input",render);
@@ -293,7 +334,7 @@ def render_dashboard(version: str, ocean_configured: bool) -> str:
 
   async function pollJob(jobId) {{ try {{ const response=await fetch(`/api/jobs/${{jobId}}`); const job=await response.json(); if(!response.ok) throw new Error(job.detail||"Search status unavailable"); showProgress(job.progress,job.stage,job.message); if(job.status==="completed") {{ finish(job); return; }} if(job.status==="failed") throw new Error(job.error||"Ocean search failed"); setTimeout(()=>pollJob(jobId),1000); }} catch(error) {{ showError(error.message); setBusy(false); }} }}
 
-  function finish(job) {{ const result=job.result||{{}}; state.companies=result.matches||[]; state.people=result.contacts||[]; state.downloadUrl=job.download_url||""; sessionStorage.removeItem("8thon-ocean-job"); $("#download").disabled=!state.downloadUrl; $("#company-count").textContent=state.companies.length; $("#people-count").textContent=state.people.length; $("#email-summary").textContent=`${{result.direct_count||0}} emails`; $("#target-summary").textContent=`Target ${{result.target_achieved||0}}/${{result.target_count||0}}`; $("#target-summary").className=`pill ${{result.target_met?"good":"warn"}}`; $("#usage-summary").textContent=`${{result.estimated_standard_credits||0}} standard + ${{result.estimated_email_credits||0}} email credits`; $("#summary").classList.remove("hidden"); setBusy(false); showProgress(100,"Complete",result.reveal_complete===false?"Results ready; some email checks timed out":"Results and CSV are ready"); setTimeout(()=>$("#progress-panel").classList.add("hidden"),1200); render(); loadCredits(); }}
+  function finish(job) {{ const result=job.result||{{}}; state.companies=result.matches||[]; state.people=result.contacts||[]; state.downloadUrl=job.download_url||""; sessionStorage.removeItem("8thon-ocean-job"); $("#download").disabled=!state.downloadUrl; $("#company-count").textContent=state.companies.length; $("#people-count").textContent=state.people.length; $("#email-summary").textContent=`${{result.direct_count||0}} emails`; $("#target-summary").textContent=`Target ${{result.target_achieved||0}}/${{result.target_count||0}}`; $("#target-summary").className=`pill ${{result.target_met?"good":"warn"}}`; $("#usage-summary").textContent=`${{result.estimated_standard_credits||0}} standard + ${{result.estimated_email_credits||0}} email credits`; $("#summary").classList.remove("hidden"); setBusy(false); showProgress(100,"Complete",result.stopped_early?`Partial results kept. Ocean stopped the run: ${{result.stopped_early}}`:(result.reveal_complete===false?"Results ready; some email checks timed out":"Results and CSV are ready")); if(result.stopped_early){{showError(`Partial results saved. ${{result.stopped_early}}`);}} setTimeout(()=>$("#progress-panel").classList.add("hidden"),1200); render(); loadCredits(); }}
 
   function render() {{ const term=textValue("#result-search").toLowerCase(); const companies=state.companies.filter(item=>JSON.stringify(item).toLowerCase().includes(term)); const people=state.people.filter(item=>JSON.stringify(item).toLowerCase().includes(term)); $$(".result-tab").forEach(button=>button.classList.toggle("active",button.dataset.view===state.view)); $("#empty").classList.toggle("hidden",state.companies.length>0||state.people.length>0); $("#companies-view").classList.toggle("hidden",state.view!=="companies"||!state.companies.length); $("#people-view").classList.toggle("hidden",state.view!=="people"||!state.people.length); $("#result-count").textContent=state.view==="companies"?`${{companies.length}} companies`:`${{people.length}} people`; renderCompanies(companies); renderPeople(people); if(window.lucide)lucide.createIcons(); }}
 

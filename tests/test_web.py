@@ -4,9 +4,10 @@ import time
 import unittest
 from unittest.mock import patch
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from lead_scraper.ocean import OceanSearchPage
+from lead_scraper.ocean import OceanAPIError, OceanSearchPage
 from lead_scraper.web import (
     OceanSearchRequest,
     app,
@@ -22,6 +23,10 @@ class FakeOceanClient:
         self.company_kwargs = {}
         self.people_kwargs = {}
         self.reveal_requests = []
+        self.credits = 500.0
+
+    def available_credits(self):
+        return self.credits
 
     def search_companies(self, **kwargs):
         self.company_kwargs = kwargs
@@ -103,6 +108,9 @@ class OceanDashboardTests(unittest.TestCase):
         self.assertIn('max="1000"', html)
         self.assertNotIn("Google Maps Connected", html)
         self.assertNotIn("OpenAI Connected", html)
+        self.assertIn('id="preset"', html)
+        self.assertIn("pay_per_call", html)
+        self.assertIn("Ringba", html)
 
     def test_company_filters_use_ocean_location_and_keyword_shapes(self) -> None:
         request = OceanSearchRequest(
@@ -236,6 +244,36 @@ class OceanDashboardTests(unittest.TestCase):
         self.assertTrue(result["target_met"])
         self.assertIn("owner@blue.com", result["csv"])
         self.assertNotIn("owner@apex.com", result["csv"])
+
+    def test_search_keeps_companies_when_people_search_runs_out_of_credits(self) -> None:
+        class BrokePeopleClient(FakeOceanClient):
+            def search_people(self, **kwargs):
+                raise OceanAPIError("Ocean.io returned 402: Insufficient credits")
+
+        client = BrokePeopleClient()
+        store = FakeOceanStore()
+        request = OceanSearchRequest(
+            mode="lookalike",
+            reference_domains="ideal.com",
+            target_type="companies",
+            target_count=2,
+        )
+        result = execute_ocean_search(request, client=client, store=store)
+
+        self.assertEqual(2, result["match_count"])
+        self.assertIn("Insufficient credits", result["stopped_early"])
+        self.assertIn("apex.com", result["csv"])
+
+    def test_search_refuses_to_start_without_enough_credits(self) -> None:
+        client = FakeOceanClient()
+        client.credits = 3.0
+        request = OceanSearchRequest(mode="lookalike", reference_domains="ideal.com")
+
+        with self.assertRaises(HTTPException) as caught:
+            execute_ocean_search(request, client=client, store=FakeOceanStore())
+
+        self.assertEqual(402, caught.exception.status_code)
+        self.assertIn("credits", str(caught.exception.detail))
 
     def test_background_ocean_job_can_be_polled_and_downloaded(self) -> None:
         client = TestClient(app)

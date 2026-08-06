@@ -75,6 +75,18 @@ class OceanClient:
     def credit_balance(self) -> dict[str, object]:
         return self._request("GET", "/v2/credits/balance")
 
+    def available_credits(self) -> float:
+        credits = self.credit_balance().get("credits")
+        if not isinstance(credits, dict):
+            return 0.0
+        total = 0.0
+        for value in credits.values():
+            try:
+                total += float(value)
+            except (TypeError, ValueError):
+                continue
+        return total
+
     def search_companies(
         self,
         *,
