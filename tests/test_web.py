@@ -169,10 +169,11 @@ class OceanDashboardTests(unittest.TestCase):
         result = execute_ocean_search(request, client=client, store=store)
 
         self.assertEqual(2, result["match_count"])
-        self.assertEqual(2, result["direct_count"])
-        self.assertTrue(result["target_met"])
+        self.assertEqual(1, result["direct_count"])
+        self.assertFalse(result["target_met"])
         self.assertIn("verified_email", result["csv"])
         self.assertIn("avery@apex.com", result["csv"])
+        self.assertNotIn("morgan@blue.com", result["csv"])
         self.assertEqual(["ideal.com"], client.company_kwargs["lookalike_domains"])
         self.assertIn("seen.example", client.company_kwargs["exclude_domains"])
         self.assertEqual(
@@ -181,7 +182,60 @@ class OceanDashboardTests(unittest.TestCase):
         )
         self.assertIn("old-person", client.people_kwargs["people_filters"]["excludePeopleIds"])
         self.assertTrue(client.reveal_requests[0][1].endswith("/secure-callback"))
-        self.assertEqual(2, len(store.exported))
+        self.assertEqual(1, len(store.exported))
+        self.assertEqual("avery@apex.com", store.exported[0]["verified_email"])
+
+    @patch.dict("os.environ", {"OCEAN_REVEAL_WAIT_SECONDS": "1"})
+    def test_email_target_keeps_searching_until_verified_target_met(self) -> None:
+        class RefillOceanClient(FakeOceanClient):
+            def __init__(self) -> None:
+                super().__init__()
+                self.company_calls = 0
+                self.batches = [
+                    [{"domain": "apex.com", "name": "Apex Pools"}],
+                    [{"domain": "blue.com", "name": "Blue Water Pools"}],
+                ]
+
+            def search_companies(self, **kwargs):
+                self.company_kwargs = kwargs
+                self.company_calls += 1
+                records = self.batches.pop(0) if self.batches else []
+                return OceanSearchPage(records=records, total=200, search_after=None)
+
+            def search_people(self, **kwargs):
+                self.people_kwargs = kwargs
+                domain = kwargs["companies_filters"]["includeDomains"][0]
+                person = {
+                    "id": f"person-{domain}",
+                    "name": "Lead Owner",
+                    "jobTitle": "Owner",
+                    "domain": domain,
+                }
+                return OceanSearchPage(records=[person], total=1, search_after=None)
+
+        class RefillOceanStore(FakeOceanStore):
+            def wait_for_reveal(self, _token, _timeout, progress=None):
+                return {
+                    "person-apex.com": {"address": "owner@apex.com", "status": "guessed"},
+                    "person-blue.com": {"address": "owner@blue.com", "status": "verified"},
+                }
+
+        client = RefillOceanClient()
+        store = RefillOceanStore()
+        request = OceanSearchRequest(
+            mode="lookalike",
+            reference_domains="ideal.com",
+            target_type="emails",
+            target_count=1,
+        )
+        result = execute_ocean_search(request, client=client, store=store)
+
+        self.assertEqual(2, client.company_calls)
+        self.assertIn("apex.com", client.company_kwargs["exclude_domains"])
+        self.assertEqual(1, result["direct_count"])
+        self.assertTrue(result["target_met"])
+        self.assertIn("owner@blue.com", result["csv"])
+        self.assertNotIn("owner@apex.com", result["csv"])
 
     def test_background_ocean_job_can_be_polled_and_downloaded(self) -> None:
         client = TestClient(app)

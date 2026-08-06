@@ -1,4 +1,5 @@
-FROM python:3.12-slim
+# Pinned: jstyleson (a former transitive dep) breaks on Python 3.13+; stay on 3.12.
+FROM python:3.12.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1

@@ -204,7 +204,7 @@ class OceanLeadStore:
                 address = str(
                     email_value or raw.get("address") or raw.get("emailAddress") or ""
                 ).strip().lower()
-                status = str(raw.get("status") or ("verified" if address else "notFound")).strip()
+                status = str(raw.get("status") or ("unknown" if address else "notFound")).strip()
             if person_id:
                 rows.append((token, person_id, address, status))
         with self._connection() as connection:

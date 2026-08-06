@@ -28,6 +28,8 @@ from .ocean import (
 
 app = FastAPI(title="8-Thon Intelligence Ocean Lead Scraper")
 SEARCH_LOCK = Lock()
+MAX_EMAIL_SEARCH_ROUNDS = 6
+VERIFIED_EMAIL_STATUSES = {"verified", "valid"}
 DEFAULT_DATA_PATH = Path("/data") if os.name != "nt" and Path("/data").exists() else Path("data")
 JOB_MANAGER = JobManager(Path(os.getenv("JOB_OUTPUT_PATH", str(DEFAULT_DATA_PATH / "jobs"))))
 OCEAN_STORE = OceanLeadStore(
@@ -217,54 +219,110 @@ def execute_ocean_search(
         raise HTTPException(status_code=400, detail="Add at least one reference company domain.")
 
     company_goal = request.target_count
-    if request.target_type == "emails":
+    email_target = request.target_count if request.target_type == "emails" else 0
+    if email_target:
         company_goal = min(3000, max(request.target_count, math.ceil(request.target_count / 0.65)))
 
     try:
         companies_filters = build_company_filters(request)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    excluded_domains = sorted(
-        set(negatives).union(history.recent_domains(request.dedupe_months))
-    )
-    report(8, "Ocean companies", f"Searching for {company_goal} matching companies")
-    try:
-        company_page = ocean.search_companies(
-            size=company_goal,
-            companies_filters=companies_filters,
-            lookalike_domains=references if request.mode == "lookalike" else None,
-            exclude_domains=excluded_domains,
-        )
-    except OceanAPIError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    seen_domains = set(negatives).union(history.recent_domains(request.dedupe_months))
+    seen_people = set(history.recent_people(request.dedupe_months))
+    people_filters = build_people_filters(request)
 
-    companies = dedupe_companies(company_page.records)[:company_goal]
-    company_payloads = [company_payload(company) for company in companies]
+    company_payloads: list[dict[str, object]] = []
     contacts: list[dict[str, object]] = []
     reveal_complete = True
+    ocean_total = 0
+    max_rounds = (
+        MAX_EMAIL_SEARCH_ROUNDS
+        if email_target and request.find_contacts and request.reveal_emails
+        else 1
+    )
 
-    if request.find_contacts and companies:
-        domains = [str(company.get("domain") or "") for company in company_payloads]
-        people_goal = min(3000, max(request.target_count, len(domains) * request.people_per_company))
-        people_filters = build_people_filters(request)
-        recent_people = sorted(history.recent_people(request.dedupe_months))
-        if recent_people:
-            people_filters["excludePeopleIds"] = recent_people
-        report(38, "Ocean people", "Finding owners and senior decision-makers")
+    for round_number in range(1, max_rounds + 1):
+        verified_total = count_verified(contacts)
+        round_company_goal = company_goal
+        if round_number > 1:
+            remaining = email_target - verified_total
+            if remaining <= 0:
+                break
+            revealed = sum(1 for contact in contacts if contact.get("email_status"))
+            observed_rate = verified_total / revealed if revealed >= 25 else 0.0
+            verified_rate = max(0.15, observed_rate or 0.35)
+            round_company_goal = min(3000, max(remaining, math.ceil(remaining / verified_rate)))
+        report(
+            min(80, 8 + (round_number - 1) * 14),
+            "Ocean companies",
+            f"Searching for {round_company_goal} matching companies (round {round_number})",
+        )
+        try:
+            company_page = ocean.search_companies(
+                size=round_company_goal,
+                companies_filters=companies_filters,
+                lookalike_domains=references if request.mode == "lookalike" else None,
+                exclude_domains=sorted(seen_domains),
+            )
+        except OceanAPIError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        ocean_total = max(ocean_total, company_page.total)
+        round_companies = [
+            company
+            for company in dedupe_companies(company_page.records)
+            if clean_domain(company.get("domain") or company.get("website") or "")
+            not in seen_domains
+        ][:round_company_goal]
+        if not round_companies:
+            break
+        round_payloads = [company_payload(company) for company in round_companies]
+        seen_domains.update(str(payload["domain"]) for payload in round_payloads if payload["domain"])
+        company_payloads.extend(round_payloads)
+
+        if not request.find_contacts:
+            break
+
+        domains = [str(payload.get("domain") or "") for payload in round_payloads]
+        remaining_target = max(1, (email_target or request.target_count) - verified_total)
+        people_goal = min(3000, max(remaining_target, len(domains) * request.people_per_company))
+        round_people_filters = dict(people_filters)
+        if seen_people:
+            round_people_filters["excludePeopleIds"] = sorted(seen_people)
+        report(
+            min(84, 20 + (round_number - 1) * 14),
+            "Ocean people",
+            "Finding owners and senior decision-makers",
+        )
         try:
             people_page = ocean.search_people(
                 size=people_goal,
-                people_filters=people_filters,
+                people_filters=round_people_filters,
                 companies_filters={"includeDomains": domains},
                 people_per_company=request.people_per_company,
             )
         except OceanAPIError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
-        contacts = [person_payload(person) for person in dedupe_people(people_page.records)]
+        round_contacts = [
+            contact
+            for contact in (person_payload(person) for person in dedupe_people(people_page.records))
+            if str(contact.get("person_id") or "") not in seen_people
+        ]
+        seen_people.update(
+            str(contact["person_id"]) for contact in round_contacts if contact.get("person_id")
+        )
+        contacts.extend(round_contacts)
 
-        if request.reveal_emails and contacts:
-            report(60, "Ocean email reveal", "Requesting verified contact emails")
-            reveal_complete = attach_revealed_emails(ocean, history, contacts, report)
+        if request.reveal_emails and round_contacts:
+            report(
+                min(88, 40 + (round_number - 1) * 14),
+                "Ocean email reveal",
+                "Requesting verified contact emails",
+            )
+            round_complete = attach_revealed_emails(ocean, history, round_contacts, report)
+            reveal_complete = reveal_complete and round_complete
+
+        if not email_target or count_verified(contacts) >= email_target:
+            break
 
     contact_by_domain: dict[str, dict[str, object]] = {}
     for contact in contacts:
@@ -301,7 +359,7 @@ def execute_ocean_search(
         "discovery_count": len(matches),
         "contacts_count": len(contacts),
         "direct_count": direct_count,
-        "ocean_total": company_page.total,
+        "ocean_total": ocean_total,
         "matches": matches,
         "contacts": contacts,
         "target_type": request.target_type,
@@ -374,9 +432,19 @@ def attach_revealed_emails(
 
     for contact in contacts:
         result = email_results.get(str(contact.get("person_id") or ""), {})
-        contact["verified_email"] = result.get("address", "")
-        contact["email_status"] = result.get("status", "")
+        status = result.get("status", "")
+        address = result.get("address", "")
+        contact["email_status"] = status
+        contact["verified_email"] = address if is_verified_email_status(status) else ""
     return complete
+
+
+def is_verified_email_status(status: object) -> bool:
+    return str(status or "").strip().lower() in VERIFIED_EMAIL_STATUSES
+
+
+def count_verified(contacts: list[dict[str, object]]) -> int:
+    return sum(1 for contact in contacts if contact.get("verified_email"))
 
 
 def build_company_filters(request: OceanSearchRequest) -> dict[str, object]:
@@ -514,7 +582,9 @@ def build_export_rows(
     company_by_domain = {str(company.get("domain") or ""): company for company in matches}
     rows: list[dict[str, object]] = []
     for contact in contacts:
-        if target_type == "emails" and not contact.get("verified_email"):
+        if target_type == "emails" and not (
+            contact.get("verified_email") and is_verified_email_status(contact.get("email_status"))
+        ):
             continue
         company = company_by_domain.get(str(contact.get("domain") or ""), {})
         name = str(contact.get("owner_name") or "").strip()
