@@ -305,7 +305,52 @@ def is_business_email(email: str) -> bool:
         return False
     if "example." in domain or domain.endswith(".test"):
         return False
+    if domain in TRACKING_AND_PLACEHOLDER_DOMAINS:
+        return False
+    if local in PLACEHOLDER_LOCAL_PARTS:
+        return False
+    # Error-tracking SDKs (Sentry and clones) embed a bare hex request/event
+    # ID as the local part of a throwaway address baked into site JS; it is
+    # never a real mailbox regardless of which domain it is served from.
+    if len(local) in (32, 40) and re.fullmatch(r"[0-9a-f]+", local):
+        return False
+    # A literal "/"-style JS escape leaking into an extracted address
+    # means the source string was corrupted, not a usable email.
+    if re.search(r"\\u[0-9a-f]{4}", local) or local.startswith("u002f"):
+        return False
     return True
+
+
+# Placeholder addresses baked into website-builder templates and left
+# unedited by the business owner, plus error-tracking/monitoring SDKs whose
+# reply-to or beacon address gets embedded in page source and mistaken for a
+# contact email.
+TRACKING_AND_PLACEHOLDER_DOMAINS = {
+    "sentry.io",
+    "sentry-next.wixpress.com",
+    "ingest.sentry.io",
+    "godaddy.com",
+    "mailservice.com",
+    "domain.com",
+    "yourdomain.com",
+    "yourcompany.com",
+    "email.com",
+    "wixpress.com",
+    "squarespace.com",
+    "godaddysites.com",
+}
+
+PLACEHOLDER_LOCAL_PARTS = {
+    "filler",
+    "mymail",
+    "user",
+    "yourname",
+    "youremail",
+    "email",
+    "name",
+    "test",
+    "sentry",
+}
 
 
 def is_generic_email(email: str) -> bool:

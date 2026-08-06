@@ -107,3 +107,39 @@ class OwnerExtractionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class JunkEmailFilterTests(unittest.TestCase):
+    """Regression coverage for scraped junk that reached ocean_leads_2.csv
+    labelled as best-tier verified addresses: Sentry tracking pixels,
+    website-builder placeholder text, and a corrupted JS-escape leak."""
+
+    def test_sentry_tracking_hash_is_rejected(self) -> None:
+        from lead_scraper.extract import is_business_email
+
+        self.assertFalse(is_business_email("8c4075d5481d476e945486754f783364@sentry.io"))
+        self.assertFalse(
+            is_business_email("18d2f96d279149989b95faf0a4b41882@sentry-next.wixpress.com")
+        )
+
+    def test_website_builder_placeholders_are_rejected(self) -> None:
+        from lead_scraper.extract import is_business_email
+
+        for email in ("filler@godaddy.com", "mymail@mailservice.com", "user@domain.com"):
+            self.assertFalse(is_business_email(email), email)
+
+    def test_corrupted_js_escape_is_rejected(self) -> None:
+        from lead_scraper.extract import is_business_email
+
+        self.assertFalse(is_business_email("u002fxtremepaintconway@gmail.com"))
+
+    def test_real_business_addresses_still_pass(self) -> None:
+        from lead_scraper.extract import is_business_email
+
+        for email in (
+            "ashburnautocare@gmail.com",
+            "info@djsautorepair.com",
+            "johnathan@autoclinicjonesboro.com",
+            "kevin@sherwoodtirepros.com",
+        ):
+            self.assertTrue(is_business_email(email), email)
