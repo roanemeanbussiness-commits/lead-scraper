@@ -21,6 +21,122 @@ PLACES_FIELD_MASK = (
 )
 
 TRADE_QUERY_EXPANSIONS = {
+    # Near-synonyms ("construction company", "local construction") return the
+    # same businesses Google already returned. Only genuinely distinct trades
+    # and specialities widen the candidate pool, so each list holds sibling
+    # business types rather than rewordings of the same one.
+    "construct": [
+        "general contractor", "home builder", "custom home builder",
+        "remodeling contractor", "kitchen remodeler", "bathroom remodeler",
+        "commercial construction company", "concrete contractor",
+        "framing contractor", "masonry contractor", "excavation contractor",
+        "drywall contractor", "foundation repair", "flooring contractor",
+        "roofing contractor", "siding contractor", "window installation",
+        "demolition contractor", "steel building contractor",
+        "civil construction company", "paving contractor", "fence contractor",
+        "carpentry contractor", "insulation contractor",
+    ],
+    "contractor": [
+        "general contractor", "home builder", "remodeling contractor",
+        "concrete contractor", "roofing contractor", "masonry contractor",
+        "excavation contractor", "drywall contractor", "flooring contractor",
+        "paving contractor", "fence contractor", "carpentry contractor",
+    ],
+    "remodel": [
+        "remodeling contractor", "kitchen remodeler", "bathroom remodeler",
+        "home renovation company", "general contractor", "flooring contractor",
+        "cabinet installer", "countertop installer", "tile contractor",
+        "custom home builder", "room addition contractor",
+    ],
+    "insurance": [
+        "insurance agency", "auto insurance agency", "home insurance agency",
+        "life insurance agency", "health insurance agent",
+        "medicare insurance agent", "commercial insurance broker",
+        "independent insurance agent", "insurance broker",
+    ],
+    "law": [
+        "personal injury lawyer", "car accident attorney",
+        "criminal defense attorney", "family law attorney", "divorce lawyer",
+        "immigration lawyer", "estate planning attorney", "bankruptcy attorney",
+        "workers compensation lawyer", "business attorney",
+    ],
+    "attorney": [
+        "personal injury lawyer", "car accident attorney",
+        "criminal defense attorney", "family law attorney", "divorce lawyer",
+        "immigration lawyer", "estate planning attorney", "bankruptcy attorney",
+    ],
+    "dent": [
+        "dentist", "cosmetic dentist", "dental implants clinic", "orthodontist",
+        "pediatric dentist", "oral surgeon", "periodontist", "emergency dentist",
+    ],
+    "spa": [
+        "med spa", "medical spa", "botox clinic", "laser hair removal",
+        "aesthetics clinic", "skin care clinic", "wellness clinic",
+        "body contouring clinic",
+    ],
+    "real estate": [
+        "real estate brokerage", "property management company", "realtor office",
+        "commercial real estate broker", "apartment property management",
+        "real estate investment company",
+    ],
+    "auto": [
+        "auto repair shop", "auto body shop", "transmission repair",
+        "car detailing", "tire shop", "mobile mechanic", "brake repair shop",
+        "collision repair center",
+    ],
+    "clean": [
+        "commercial cleaning company", "janitorial services", "maid service",
+        "carpet cleaning company", "window cleaning service",
+        "pressure washing company", "post construction cleaning",
+    ],
+    "market": [
+        "marketing agency", "digital marketing agency", "SEO company",
+        "advertising agency", "web design company", "branding agency",
+        "social media marketing agency",
+    ],
+    "staffing": [
+        "staffing agency", "recruiting agency", "temp agency",
+        "employment agency", "executive search firm", "nurse staffing agency",
+    ],
+    "account": [
+        "accounting firm", "CPA firm", "bookkeeping service",
+        "tax preparation service", "payroll service", "business tax advisor",
+    ],
+    "it ": [
+        "managed IT services", "IT support company", "cybersecurity company",
+        "computer repair for business", "network support company",
+        "cloud services provider",
+    ],
+    "solar": [
+        "solar installer", "solar panel company", "solar energy contractor",
+        "residential solar company", "commercial solar installer",
+        "solar battery installer",
+    ],
+    "restoration": [
+        "water damage restoration", "fire damage restoration",
+        "mold remediation company", "storm damage restoration",
+        "flood cleanup service", "smoke damage restoration",
+    ],
+    "pest": [
+        "pest control company", "exterminator", "termite control",
+        "wildlife removal", "rodent control", "mosquito control service",
+    ],
+    "moving": [
+        "moving company", "long distance movers", "junk removal service",
+        "packing service", "storage and moving company", "office movers",
+    ],
+    "senior": [
+        "assisted living facility", "home care agency", "senior home care",
+        "memory care facility", "nursing home", "hospice care",
+    ],
+    "fitness": [
+        "gym", "fitness studio", "crossfit gym", "martial arts studio",
+        "yoga studio", "personal training studio", "pilates studio",
+    ],
+    "chiro": [
+        "chiropractor", "physical therapy clinic", "sports rehab clinic",
+        "massage therapy clinic", "pain management clinic",
+    ],
     "pool": [
         "pool builder", "swimming pool contractor", "custom pool builder", "pool installation",
         "pool construction company", "inground pool builder", "pool remodeling contractor",
@@ -246,7 +362,9 @@ def keyword_discovery_queries(query: str, target_count: int) -> list[str]:
     clean = " ".join(query.split()).strip()
     if not clean:
         return []
-    max_queries = min(24, max(4, math.ceil(max(1, target_count) / 45)))
+    # Text Search returns ~60 results per query, so reaching a few hundred
+    # candidates needs many distinct queries, not a handful.
+    max_queries = min(30, max(6, math.ceil(max(1, target_count) / 20)))
     candidates = [clean]
     lowered = clean.lower()
     for signal, expansions in TRADE_QUERY_EXPANSIONS.items():

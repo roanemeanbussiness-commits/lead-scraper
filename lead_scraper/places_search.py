@@ -139,8 +139,10 @@ def search_places_leads(
         # Reaching 100+ emails means crawling several hundred sites; scale the
         # patience with the ask instead of giving up on a fixed timer.
         configured = os.getenv("PLACES_CRAWL_DEADLINE_SECONDS", "")
+        # Roughly 10s of wall clock per site once spread across the workers,
+        # and reaching N emails means crawling ~2N sites at observed yields.
         crawl_deadline = float(configured) if configured else float(
-            min(1800, max(300, target_count * 8))
+            min(2700, max(600, target_count * 20))
         )
 
     # A preset or keyword field may hold several comma-separated trades; each

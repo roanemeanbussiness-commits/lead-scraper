@@ -128,5 +128,23 @@ class PlacesResilienceTests(unittest.TestCase):
             with self.assertRaisesRegex(GooglePlacesError, "unavailable"):
                 search_google_places_queries(["a", "b"], "San Antonio, TX", 10)
 
+class QueryDiversityTests(unittest.TestCase):
+    def test_construction_expands_into_distinct_trades_not_synonyms(self) -> None:
+        queries = keyword_discovery_queries("construction", 400)
+
+        self.assertGreaterEqual(len(queries), 15)
+        for distinct in ("general contractor", "concrete contractor", "home builder"):
+            self.assertIn(distinct, queries)
+        # Reworded near-duplicates crowd out real coverage; siblings win the slots.
+        synonyms = [q for q in queries if q.startswith(("local ", "licensed "))]
+        self.assertEqual([], synonyms)
+
+    def test_query_count_scales_with_target(self) -> None:
+        self.assertGreater(
+            len(keyword_discovery_queries("construction", 400)),
+            len(keyword_discovery_queries("construction", 20)),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
