@@ -59,8 +59,8 @@ class OceanSearchRequest(BaseModel):
     company_sizes: str = ""
     revenues: str = ""
     country: str = "us"
-    city: str = "San Antonio"
-    state: str = "TX"
+    city: str = ""
+    state: str = ""
     ecommerce: str = "any"
     year_founded_from: int | None = Field(None, ge=0, le=2100)
     year_founded_to: int | None = Field(None, ge=0, le=2100)
@@ -78,7 +78,7 @@ class OceanSearchRequest(BaseModel):
 class LookalikeRequest(OceanSearchRequest):
     reference_urls: str = ""
     negative_urls: str = ""
-    location: str = "San Antonio, TX"
+    location: str = ""
     max_candidates: int = Field(160, ge=10, le=3000)
     max_results: int = Field(50, ge=1, le=1000)
     max_pages: int = Field(6, ge=1, le=15)
@@ -99,7 +99,7 @@ class LookalikeRequest(OceanSearchRequest):
 
 
 class ScrapeRequest(OceanSearchRequest):
-    location: str = "San Antonio, TX"
+    location: str = ""
     urls: str = ""
     category: str = ""
     max_results: int = Field(20, ge=1, le=1000)

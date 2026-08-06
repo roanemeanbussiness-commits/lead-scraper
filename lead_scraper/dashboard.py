@@ -235,7 +235,7 @@ def render_dashboard(
       <details open data-filter="headquarter location country state city">
         <summary><i data-lucide="map-pin"></i>Headquarter location</summary>
         <div class="details-body">
-          <div class="field"><label for="city">City</label><input id="city" value="San Antonio"></div>
+          <div class="field"><label for="city">City</label><input id="city" placeholder="Any city"></div>
           <div class="grid-2"><div><label for="state">State</label><input id="state" value="TX" maxlength="3"></div><div><label for="country">Country</label><input id="country" value="us" maxlength="2"></div></div>
         </div>
       </details>
