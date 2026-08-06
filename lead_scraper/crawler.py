@@ -95,7 +95,10 @@ def crawl_site(seed_url: str, max_pages: int, timeout: float) -> list[CrawledPag
 
     headers = {"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"}
     limits = httpx.Limits(max_connections=5, max_keepalive_connections=2)
-    with httpx.Client(headers=headers, follow_redirects=False, timeout=timeout, limits=limits) as client:
+    # An explicit per-phase timeout: a bare float let reads block indefinitely
+    # on a half-open TLS socket and stall the whole crawl.
+    budget = httpx.Timeout(connect=min(8.0, timeout), read=timeout, write=timeout, pool=timeout)
+    with httpx.Client(headers=headers, follow_redirects=False, timeout=budget, limits=limits) as client:
         while queue and len(pages) < max_pages:
             url = normalize_url(queue.popleft())
             if url in seen:

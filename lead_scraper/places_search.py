@@ -10,7 +10,9 @@ and are never labelled as Ocean-verified.
 
 from __future__ import annotations
 
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeout
 from typing import Callable
 from urllib.parse import urlparse
 
@@ -127,6 +129,7 @@ def search_places_leads(
     max_pages: int = 6,
     timeout: float = 12.0,
     workers: int = 8,
+    crawl_deadline: float = float(os.getenv("PLACES_CRAWL_DEADLINE_SECONDS", "300")),
     progress: Callable[[int, str, str], None] | None = None,
     excluded_domains: set[str] | None = None,
 ) -> list[dict[str, object]]:
@@ -156,24 +159,36 @@ def search_places_leads(
 
     report(30, "Crawling sites", f"Checking {len(places)} business websites for contacts")
     rows: list[dict[str, object]] = []
-    with ThreadPoolExecutor(max_workers=max(1, min(workers, len(places)))) as executor:
+    executor = ThreadPoolExecutor(max_workers=max(1, min(workers, len(places))))
+    try:
         futures = {
             executor.submit(enrich_place, place, max_pages, timeout, verify_mx): place
             for place in places
         }
         done = 0
-        for future in as_completed(futures):
-            done += 1
-            row = future.result()
-            if not require_email or row.get("verified_email"):
-                rows.append(row)
+        try:
+            # A single unresponsive site must never hold the whole run hostage.
+            for future in as_completed(futures, timeout=crawl_deadline):
+                done += 1
+                row = future.result()
+                if not require_email or row.get("verified_email"):
+                    rows.append(row)
+                report(
+                    min(92, 30 + round(60 * done / max(1, len(places)))),
+                    "Crawling sites",
+                    f"Checked {done} of {len(places)} sites, {len(rows)} leads kept",
+                )
+                if len(rows) >= target_count:
+                    break
+        except FuturesTimeout:
             report(
-                min(92, 30 + round(60 * done / max(1, len(places)))),
+                92,
                 "Crawling sites",
-                f"Checked {done} of {len(places)} sites, {len(rows)} leads kept",
+                f"Stopped waiting on {len(places) - done} slow sites, {len(rows)} leads kept",
             )
-            if len(rows) >= target_count:
-                break
         for future in futures:
             future.cancel()
+    finally:
+        # Do not block on threads still stuck inside a slow site.
+        executor.shutdown(wait=False)
     return rows[:target_count]
