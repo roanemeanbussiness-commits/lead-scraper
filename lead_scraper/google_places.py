@@ -67,6 +67,14 @@ class PlaceLead:
     category: str = ""
 
 
+# A bare float timeout left reads able to block indefinitely on a half-open
+# TLS socket, which froze whole searches. Bound every phase explicitly.
+PLACES_TIMEOUT = httpx.Timeout(connect=10.0, read=20.0, write=10.0, pool=10.0)
+
+# No single query sweep may outlast this, whatever the network does.
+PLACES_SWEEP_DEADLINE_SECONDS = float(os.getenv("PLACES_SWEEP_DEADLINE_SECONDS", "180"))
+
+
 class GooglePlacesError(RuntimeError):
     pass
 
@@ -138,8 +146,9 @@ def search_google_places(query: str, location: str, max_results: int = 20) -> li
     seen_page_tokens: set[str] = set()
     page_token = ""
 
-    with httpx.Client(timeout=20.0) as client:
-        while len(leads) < max_results:
+    page_deadline = time.monotonic() + PLACES_SWEEP_DEADLINE_SECONDS
+    with httpx.Client(timeout=PLACES_TIMEOUT) as client:
+        while len(leads) < max_results and time.monotonic() < page_deadline:
             payload: dict[str, str | int] = {
                 "textQuery": text_query,
                 "pageSize": min(20, max_results - len(leads)),
@@ -199,7 +208,10 @@ def search_google_places_queries(
     results: list[PlaceLead] = []
     seen: set[str] = set()
     failures = 0
+    deadline = time.monotonic() + PLACES_SWEEP_DEADLINE_SECONDS
     for index, query in enumerate(clean_queries, start=1):
+        if time.monotonic() > deadline:
+            break
         try:
             found = search_google_places(query, location, max_results=per_query)
         except GooglePlacesError:
