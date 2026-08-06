@@ -25,9 +25,12 @@ primary_region = 'iad'
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = 'stop'
+  # Searches run as background threads. Fly autostops on concurrent load, not
+  # request count, so status polling does not keep the machine alive and a
+  # running search was being SIGINT'd mid-flight. Keep one machine up.
+  auto_stop_machines = 'off'
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
   processes = ['app']
 
 [[vm]]
