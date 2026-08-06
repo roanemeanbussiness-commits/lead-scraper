@@ -132,8 +132,10 @@ def search_google_places(query: str, location: str, max_results: int = 20) -> li
     if not api_key:
         raise RuntimeError("GOOGLE_MAPS_API_KEY is not configured.")
 
-    text_query = " ".join(value for value in [query.strip(), "in", location.strip()] if value)
-    if not text_query.strip() or max_results <= 0:
+    text_query = query.strip()
+    if location.strip():
+        text_query = f"{text_query} in {location.strip()}"
+    if not text_query or max_results <= 0:
         return []
 
     headers = {

@@ -128,21 +128,41 @@ def search_places_leads(
     verify_mx: bool,
     max_pages: int = 6,
     timeout: float = 12.0,
-    workers: int = 8,
-    crawl_deadline: float = float(os.getenv("PLACES_CRAWL_DEADLINE_SECONDS", "300")),
+    workers: int = 12,
+    crawl_deadline: float | None = None,
     progress: Callable[[int, str, str], None] | None = None,
     excluded_domains: set[str] | None = None,
 ) -> list[dict[str, object]]:
     report = progress or (lambda _value, _stage, _message: None)
     excluded = {domain.lower() for domain in (excluded_domains or set())}
+    if crawl_deadline is None:
+        # Reaching 100+ emails means crawling several hundred sites; scale the
+        # patience with the ask instead of giving up on a fixed timer.
+        configured = os.getenv("PLACES_CRAWL_DEADLINE_SECONDS", "")
+        crawl_deadline = float(configured) if configured else float(
+            min(1800, max(300, target_count * 8))
+        )
 
+    # A preset or keyword field may hold several comma-separated trades; each
+    # one is its own Places search, never a single word-salad query.
+    keywords = [item.strip() for item in query.split(",") if item.strip()]
     # Crawling drops sites with no reachable email, so start from a wider pool.
-    pool = target_count * 3 if require_email else target_count
-    report(10, "Google Places", f"Searching Google Places for '{query}' in {location}")
+    pool = min(900, target_count * 4 if require_email else target_count * 2)
+    queries: list[str] = []
+    seen_queries: set[str] = set()
+    for keyword in keywords:
+        for expanded in keyword_discovery_queries(keyword, max(45, pool // len(keywords))):
+            if expanded.lower() not in seen_queries:
+                seen_queries.add(expanded.lower())
+                queries.append(expanded)
+    queries = queries[:30]
+
+    where = location or "the United States"
+    report(10, "Google Places", f"Searching Google Places for '{query}' in {where}")
     places = search_google_places_queries(
-        keyword_discovery_queries(query, pool),
+        queries,
         location,
-        max_results=min(600, pool),
+        max_results=pool,
         progress=lambda done, total, found: report(
             10 + round(18 * done / max(1, total)),
             "Google Places",

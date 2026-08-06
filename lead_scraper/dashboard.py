@@ -181,11 +181,41 @@ def render_dashboard(
           <label for="preset">Fill filters for a known niche</label>
           <select id="preset">
             <option value="">Choose a preset...</option>
-            <option value="pay_per_call">Pay-per-call lead gen</option>
-            <option value="ppc_insurance">Pay-per-call: insurance</option>
-            <option value="ppc_home_services">Pay-per-call: home services</option>
-            <option value="ppc_legal">Pay-per-call: legal</option>
-            <option value="ppc_medicare">Pay-per-call: Medicare</option>
+            <optgroup label="Pay-per-call sellers (needs Ocean)">
+              <option value="pay_per_call">Pay-per-call lead gen</option>
+              <option value="ppc_insurance">Pay-per-call: insurance</option>
+              <option value="ppc_home_services">Pay-per-call: home services</option>
+              <option value="ppc_legal">Pay-per-call: legal</option>
+              <option value="ppc_medicare">Pay-per-call: Medicare</option>
+            </optgroup>
+            <optgroup label="Call &amp; lead buyers (Places-friendly)">
+              <option value="buy_insurance">Insurance agencies</option>
+              <option value="buy_legal">Law firms (injury, defense, family)</option>
+              <option value="buy_roofing">Roofing contractors</option>
+              <option value="buy_hvac">HVAC companies</option>
+              <option value="buy_plumbing">Plumbers</option>
+              <option value="buy_solar">Solar installers</option>
+              <option value="buy_restoration">Water/fire restoration</option>
+              <option value="buy_pest">Pest control</option>
+            </optgroup>
+            <optgroup label="High-ticket local (Places-friendly)">
+              <option value="loc_medspa">Med spas &amp; aesthetics</option>
+              <option value="loc_dental">Dentists &amp; orthodontists</option>
+              <option value="loc_chiro">Chiropractors &amp; rehab</option>
+              <option value="loc_realestate">Real estate &amp; property mgmt</option>
+              <option value="loc_remodel">Home builders &amp; remodelers</option>
+              <option value="loc_auto">Auto repair &amp; body shops</option>
+              <option value="loc_moving">Moving &amp; junk removal</option>
+              <option value="loc_cleaning">Cleaning &amp; janitorial</option>
+              <option value="loc_seniorcare">Senior care &amp; home health</option>
+              <option value="loc_fitness">Gyms &amp; fitness studios</option>
+            </optgroup>
+            <optgroup label="B2B services (Places-friendly)">
+              <option value="b2b_msp">IT services &amp; MSPs</option>
+              <option value="b2b_staffing">Staffing &amp; recruiting</option>
+              <option value="b2b_accounting">Accounting &amp; CPA firms</option>
+              <option value="b2b_marketing">Marketing &amp; SEO agencies</option>
+            </optgroup>
           </select>
           <p class="subtle" style="margin-top:8px">Presets overwrite keywords, industries, technologies, sizes and job titles. Location stays as you set it.</p>
         </div>
@@ -328,12 +358,41 @@ def render_dashboard(
     job_titles:"founder, owner, CEO, president, VP sales, media buyer, affiliate manager, publisher manager",
     seniorities:"Owner, Founder, C-Level, Partner, VP, Head, Director"
   }};
+  const OWNER_TITLES = "owner, founder, president, CEO, office manager, general manager";
+  const localPreset = (placesQuery, industries) => ({{
+    places_query: placesQuery,
+    keywords_any: placesQuery,
+    industries_any: industries,
+    job_titles: OWNER_TITLES
+  }});
   const PRESETS = {{
-    pay_per_call: PPC_BASE,
-    ppc_insurance: {{...PPC_BASE, keywords_any:PPC_BASE.keywords_any+", insurance leads, auto insurance calls, final expense, life insurance leads"}},
-    ppc_home_services: {{...PPC_BASE, keywords_any:PPC_BASE.keywords_any+", home services leads, roofing leads, HVAC leads, solar leads, restoration leads"}},
-    ppc_legal: {{...PPC_BASE, keywords_any:PPC_BASE.keywords_any+", legal leads, mass tort, personal injury leads, attorney marketing"}},
-    ppc_medicare: {{...PPC_BASE, keywords_any:PPC_BASE.keywords_any+", medicare leads, medicare advantage calls, ACA leads, health insurance calls"}}
+    pay_per_call: {{...PPC_BASE, places_query:"lead generation agency, performance marketing agency, call center marketing"}},
+    ppc_insurance: {{...PPC_BASE, places_query:"insurance lead generation, insurance marketing agency", keywords_any:PPC_BASE.keywords_any+", insurance leads, auto insurance calls, final expense, life insurance leads"}},
+    ppc_home_services: {{...PPC_BASE, places_query:"home services marketing agency, contractor lead generation", keywords_any:PPC_BASE.keywords_any+", home services leads, roofing leads, HVAC leads, solar leads, restoration leads"}},
+    ppc_legal: {{...PPC_BASE, places_query:"legal marketing agency, attorney lead generation", keywords_any:PPC_BASE.keywords_any+", legal leads, mass tort, personal injury leads, attorney marketing"}},
+    ppc_medicare: {{...PPC_BASE, places_query:"medicare marketing agency, health insurance lead generation", keywords_any:PPC_BASE.keywords_any+", medicare leads, medicare advantage calls, ACA leads, health insurance calls"}},
+    buy_insurance: localPreset("insurance agency, auto insurance agency, life insurance agency, health insurance agent, medicare insurance agent", "Insurance"),
+    buy_legal: localPreset("personal injury lawyer, car accident attorney, criminal defense attorney, family law attorney, immigration lawyer", "Legal Services"),
+    buy_roofing: localPreset("roofing contractor, roof repair, metal roofing company, storm damage roofer", "Construction"),
+    buy_hvac: localPreset("HVAC contractor, air conditioning repair, heating company, AC installation", "Construction"),
+    buy_plumbing: localPreset("plumber, plumbing contractor, drain cleaning, water heater installation", "Construction"),
+    buy_solar: localPreset("solar installer, solar panel company, solar energy contractor", "Renewables & Environment"),
+    buy_restoration: localPreset("water damage restoration, fire damage restoration, mold remediation company", "Construction"),
+    buy_pest: localPreset("pest control company, exterminator, termite control, wildlife removal", "Consumer Services"),
+    loc_medspa: localPreset("med spa, medical spa, botox clinic, laser hair removal, aesthetics clinic", "Health, Wellness & Fitness"),
+    loc_dental: localPreset("dentist, dental implants clinic, orthodontist, cosmetic dentist", "Medical Practice"),
+    loc_chiro: localPreset("chiropractor, physical therapy clinic, sports rehab clinic", "Medical Practice"),
+    loc_realestate: localPreset("real estate brokerage, property management company, realtor office", "Real Estate"),
+    loc_remodel: localPreset("custom home builder, remodeling contractor, kitchen remodeler, bathroom remodeling company", "Construction"),
+    loc_auto: localPreset("auto repair shop, auto body shop, transmission repair, car detailing", "Automotive"),
+    loc_moving: localPreset("moving company, long distance movers, junk removal service", "Consumer Services"),
+    loc_cleaning: localPreset("commercial cleaning company, janitorial services, maid service", "Facilities Services"),
+    loc_seniorcare: localPreset("assisted living facility, home care agency, senior home care", "Hospital & Health Care"),
+    loc_fitness: localPreset("gym, fitness studio, crossfit gym, martial arts studio, yoga studio", "Health, Wellness & Fitness"),
+    b2b_msp: localPreset("managed IT services, IT support company, cybersecurity company, computer repair for business", "Information Technology & Services"),
+    b2b_staffing: localPreset("staffing agency, recruiting agency, temp agency", "Staffing & Recruiting"),
+    b2b_accounting: localPreset("accounting firm, CPA firm, bookkeeping service, tax preparation service", "Accounting"),
+    b2b_marketing: localPreset("marketing agency, digital marketing agency, SEO company, advertising agency", "Marketing & Advertising")
   }};
   $("#preset").addEventListener("change", event => {{
     const preset=PRESETS[event.target.value];

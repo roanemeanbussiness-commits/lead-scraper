@@ -428,12 +428,12 @@ def execute_places_search(
             status_code=400,
             detail="Add a search term for Google Places, for example 'pool builder'.",
         )
+    # No location means a nationwide sweep, which is what distributed niches
+    # like lead-gen agencies need; regionCode=US already bounds the search.
     location = (
         request.places_location
         or ", ".join(part for part in [request.city.strip(), request.state.strip()] if part)
     ).strip()
-    if not location:
-        raise HTTPException(status_code=400, detail="Add a city or state for Google Places.")
 
     history = store or OCEAN_STORE
     require_email = request.target_type == "emails"

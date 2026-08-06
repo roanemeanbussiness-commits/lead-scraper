@@ -150,5 +150,60 @@ class ForcedProviderTests(unittest.TestCase):
 
         self.assertEqual("", forced_provider())
 
+class DiscoveryScalingTests(unittest.TestCase):
+    def test_comma_separated_keywords_become_separate_queries(self) -> None:
+        from lead_scraper.places_search import search_places_leads
+
+        with patch(
+            "lead_scraper.places_search.search_google_places_queries", return_value=[]
+        ) as sweep:
+            search_places_leads(
+                query="insurance agency, personal injury lawyer",
+                location="San Antonio, TX",
+                target_count=10,
+                require_email=True,
+                verify_mx=False,
+            )
+        queries = sweep.call_args.args[0]
+        self.assertIn("insurance agency", queries)
+        self.assertIn("personal injury lawyer", queries)
+        self.assertNotIn("insurance agency, personal injury lawyer", queries)
+
+    def test_missing_location_runs_nationwide_instead_of_failing(self) -> None:
+        request = OceanSearchRequest(
+            provider="google_places",
+            places_query="lead generation agency",
+            places_location="",
+            city="",
+            state="",
+            target_type="emails",
+            target_count=1,
+        )
+        with patch("lead_scraper.web.google_places_configured", return_value=True), patch(
+            "lead_scraper.web.search_places_leads", return_value=[]
+        ) as places:
+            result = execute_ocean_search(request, store=FakeStore())
+        self.assertEqual("Google Places", result["provider"])
+        self.assertEqual("", places.call_args.kwargs["location"])
+
+    def test_places_text_query_has_no_dangling_in(self) -> None:
+        import httpx
+        from unittest.mock import MagicMock
+
+        response = MagicMock()
+        response.status_code = 200
+        response.json.return_value = {"places": []}
+        with patch.dict("os.environ", {"GOOGLE_MAPS_API_KEY": "k"}, clear=True), patch(
+            "lead_scraper.google_places.httpx.Client"
+        ) as client_class:
+            client = client_class.return_value.__enter__.return_value
+            client.post.return_value = response
+            from lead_scraper.google_places import search_google_places
+
+            search_google_places("roofer", "", max_results=1)
+        sent = client.post.call_args.kwargs["json"]["textQuery"]
+        self.assertEqual("roofer", sent)
+
+
 if __name__ == "__main__":
     unittest.main()
