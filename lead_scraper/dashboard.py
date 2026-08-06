@@ -144,6 +144,7 @@ def render_dashboard(version: str, ocean_configured: bool) -> str:
     <div class="mode-tabs">
       <button class="mode-btn active" type="button" data-mode="lookalike"><i data-lucide="scan-search"></i>Lookalikes</button>
       <button class="mode-btn" type="button" data-mode="filters"><i data-lucide="sliders-horizontal"></i>Filters</button>
+      <button class="mode-btn" type="button" data-mode="places"><i data-lucide="map-pinned"></i>Places</button>
     </div>
     <div class="filter-search"><i data-lucide="search"></i><input id="filter-search" placeholder="Search filters"></div>
 
@@ -153,6 +154,16 @@ def render_dashboard(version: str, ocean_configured: bool) -> str:
         <div class="details-body">
           <div class="field" id="reference-field"><label for="reference_domains">Reference domains</label><textarea id="reference_domains" placeholder="example.com&#10;anothercustomer.com"></textarea></div>
           <div class="field"><label for="negative_domains">Exclude domains</label><textarea id="negative_domains" placeholder="competitor.com"></textarea></div>
+        </div>
+      </details>
+
+      <details open id="places-field" class="hidden" data-filter="google places maps local business search">
+        <summary><i data-lucide="map-pinned"></i>Google Places search</summary>
+        <div class="details-body">
+          <div class="field"><label for="places_query">Business type</label><input id="places_query" placeholder="pool builder"></div>
+          <div class="field"><label for="places_location">Location</label><input id="places_location" placeholder="San Antonio, TX"></div>
+          <div class="switch-row" style="margin-top:10px"><div><label>Check MX records</label><span class="subtle">Flags deliverable domains</span></div><label class="switch"><input id="verify_mx" type="checkbox" checked><span></span></label></div>
+          <p class="subtle" style="margin-top:8px">Uses no Ocean credits. Emails are scraped from each company website, not revealed by Ocean.</p>
         </div>
       </details>
 
@@ -286,7 +297,8 @@ def render_dashboard(version: str, ocean_configured: bool) -> str:
 
   function payload() {{
     return {{
-      mode:state.mode, reference_domains:textValue("#reference_domains"), negative_domains:textValue("#negative_domains"),
+      provider:state.mode==="places"?"google_places":"ocean", places_query:textValue("#places_query"), places_location:textValue("#places_location"), verify_mx:boolValue("#verify_mx"),
+      mode:state.mode==="places"?"filters":state.mode, reference_domains:textValue("#reference_domains"), negative_domains:textValue("#negative_domains"),
       keywords_any:textValue("#keywords_any"), keywords_all:textValue("#keywords_all"), keywords_none:textValue("#keywords_none"),
       industries_any:textValue("#industries_any"), industries_none:textValue("#industries_none"), technologies_any:textValue("#technologies_any"),
       company_sizes:textValue("#company_sizes"), revenues:normalizedRevenueValue(), country:textValue("#country"), city:textValue("#city"), state:textValue("#state"), ecommerce:textValue("#ecommerce"),
@@ -321,7 +333,7 @@ def render_dashboard(version: str, ocean_configured: bool) -> str:
     $$("details").forEach(item=>{{ if((item.dataset.filter||"").includes("industry")||(item.dataset.filter||"").includes("technologies")) item.open=true; }});
   }});
 
-  $$(".mode-btn").forEach(button => button.addEventListener("click", () => {{ state.mode=button.dataset.mode; $$(".mode-btn").forEach(item=>item.classList.toggle("active",item===button)); $("#reference-field").classList.toggle("hidden",state.mode!=="lookalike"); }}));
+  $$(".mode-btn").forEach(button => button.addEventListener("click", () => {{ state.mode=button.dataset.mode; $$(".mode-btn").forEach(item=>item.classList.toggle("active",item===button)); $("#reference-field").classList.toggle("hidden",state.mode!=="lookalike"); $("#places-field").classList.toggle("hidden",state.mode!=="places"); }}));
   $$(".result-tab").forEach(button => button.addEventListener("click", () => {{ state.view=button.dataset.view; render(); }}));
   $("#result-search").addEventListener("input",render);
   $("#filter-search").addEventListener("input",event => {{ const term=event.target.value.toLowerCase(); $$("details[data-filter]").forEach(item=>item.classList.toggle("hidden",term && !item.dataset.filter.includes(term))); }});

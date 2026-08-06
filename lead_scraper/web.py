@@ -16,7 +16,10 @@ from pydantic import BaseModel, Field
 
 from . import __version__
 from .dashboard import render_dashboard
+from .google_places import google_places_configured
 from .jobs import JobManager
+from .places_search import DELIVERABLE_STATUSES as PLACES_DELIVERABLE_STATUSES
+from .places_search import search_places_leads
 from .ocean import (
     OceanAPIError,
     OceanClient,
@@ -39,6 +42,10 @@ OCEAN_STORE = OceanLeadStore(
 
 
 class OceanSearchRequest(BaseModel):
+    provider: str = "ocean"
+    places_query: str = ""
+    places_location: str = ""
+    verify_mx: bool = True
     mode: str = "lookalike"
     reference_domains: str = ""
     negative_domains: str = ""
@@ -207,6 +214,8 @@ def execute_ocean_search(
     store: OceanLeadStore | None = None,
 ) -> dict[str, object]:
     report = progress or (lambda _value, _stage, _message: None)
+    if request.provider == "google_places":
+        return execute_places_search(request, report, store=store)
     if request.mode not in {"lookalike", "filters"}:
         raise HTTPException(status_code=400, detail="Search mode must be lookalike or filters.")
     if request.target_type not in {"companies", "emails"}:
@@ -395,6 +404,102 @@ def execute_ocean_search(
         "estimated_standard_credits": round((len(matches) + len(contacts)) * 0.2, 1),
         "estimated_email_credits": direct_count,
         "csv": csv_text,
+    }
+
+
+def execute_places_search(
+    request: OceanSearchRequest,
+    report: Callable[[int, str, str], None],
+    *,
+    store: OceanLeadStore | None = None,
+) -> dict[str, object]:
+    if not google_places_configured():
+        raise HTTPException(
+            status_code=400,
+            detail="Google Places is not configured. Add a GooglePlacesAPI secret.",
+        )
+    query = (request.places_query or request.keywords_any or request.query).strip()
+    if not query:
+        raise HTTPException(
+            status_code=400,
+            detail="Add a search term for Google Places, for example 'pool builder'.",
+        )
+    location = (
+        request.places_location
+        or ", ".join(part for part in [request.city.strip(), request.state.strip()] if part)
+    ).strip()
+    if not location:
+        raise HTTPException(status_code=400, detail="Add a city or state for Google Places.")
+
+    history = store or OCEAN_STORE
+    require_email = request.target_type == "emails"
+    try:
+        rows = search_places_leads(
+            query=query,
+            location=location,
+            target_count=request.target_count,
+            require_email=require_email,
+            verify_mx=request.verify_mx,
+            progress=report,
+            excluded_domains=set(parse_domains(request.negative_domains)).union(
+                history.recent_domains(request.dedupe_months)
+            ),
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    export_rows = [
+        {
+            "business_name": row.get("business_name") or "",
+            "owner_name": row.get("owner_name") or "",
+            "first_name": (str(row.get("owner_name") or "").split() or ["There"])[0],
+            "owner_role": row.get("owner_role") or "",
+            "verified_email": row.get("verified_email") or "",
+            "email_status": row.get("email_status") or "",
+            "phone": row.get("phone") or "",
+            "website": row.get("website") or "",
+            "domain": row.get("domain") or "",
+            "location": row.get("location") or "",
+            "industry": row.get("industry") or "",
+            "company_size": "",
+            "technologies": "",
+            "linkedin_url": "",
+            "linkedin_profile_url": row.get("linkedin_profile_url") or "",
+            "website_traffic": "",
+            "ocean_company_id": "",
+            "ocean_person_id": "",
+            "person_id": "",
+            "source": row.get("source") or "Google Places",
+        }
+        for row in rows
+    ]
+    history.record_exports(export_rows)
+    deliverable = sum(
+        1 for row in rows if str(row.get("email_status") or "") in PLACES_DELIVERABLE_STATUSES
+    )
+    with_email = sum(1 for row in rows if row.get("verified_email"))
+    achieved = with_email if require_email else len(rows)
+    report(96, "Preparing export", f"Building CSV for {len(export_rows)} leads")
+    return {
+        "provider": "Google Places",
+        "mode": "places",
+        "match_count": len(rows),
+        "discovery_count": len(rows),
+        "contacts_count": with_email,
+        "direct_count": with_email,
+        "deliverable_count": deliverable,
+        "ocean_total": len(rows),
+        "matches": rows,
+        "contacts": [row for row in rows if row.get("verified_email")],
+        "target_type": request.target_type,
+        "target_count": request.target_count,
+        "target_achieved": achieved,
+        "target_met": achieved >= request.target_count,
+        "reveal_complete": True,
+        "stopped_early": "",
+        "estimated_standard_credits": 0,
+        "estimated_email_credits": 0,
+        "csv": render_csv(export_rows),
     }
 
 
@@ -876,6 +981,7 @@ def status() -> dict[str, str]:
         "status": "ok",
         "provider": "Ocean.io",
         "ocean": "configured" if ocean_configured() else "missing",
+        "google_places": "configured" if google_places_configured() else "missing",
     }
 
 
