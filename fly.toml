@@ -16,6 +16,9 @@ primary_region = 'iad'
   OCEAN_STORE_PATH = '/data/ocean_leads.db'
   OCEAN_WEBHOOK_BASE_URL = 'https://lead-scraper-rrhtda.fly.dev'
   OCEAN_REVEAL_WAIT_SECONDS = '120'
+  # Ocean credits are exhausted; pin every search to Google Places.
+  # Remove this line (or set it to 'ocean') after topping up Ocean.
+  LEAD_PROVIDER = 'google_places'
 
 [mounts]
   source = 'lead_data'

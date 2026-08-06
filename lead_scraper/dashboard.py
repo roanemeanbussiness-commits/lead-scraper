@@ -3,9 +3,17 @@ from __future__ import annotations
 import html
 
 
-def render_dashboard(version: str, ocean_configured: bool) -> str:
+def render_dashboard(
+    version: str,
+    ocean_configured: bool,
+    places_only: bool = False,
+) -> str:
     ocean_state = "Connected" if ocean_configured else "Missing token"
     ocean_class = "connected" if ocean_configured else "missing"
+    if places_only:
+        ocean_state = "Paused - using Google Places"
+        ocean_class = "missing"
+    places_only_js = "true" if places_only else "false"
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -142,7 +150,7 @@ def render_dashboard(version: str, ocean_configured: bool) -> str:
       <button class="quiet-btn" id="clear-search"><i data-lucide="rotate-ccw"></i>Clear</button>
     </div>
     <div class="mode-tabs">
-      <button class="mode-btn active" type="button" data-mode="lookalike"><i data-lucide="scan-search"></i>Lookalikes</button>
+      <button class="mode-btn" type="button" data-mode="lookalike"><i data-lucide="scan-search"></i>Lookalikes</button>
       <button class="mode-btn" type="button" data-mode="filters"><i data-lucide="sliders-horizontal"></i>Filters</button>
       <button class="mode-btn" type="button" data-mode="places"><i data-lucide="map-pinned"></i>Places</button>
     </div>
@@ -285,7 +293,8 @@ def render_dashboard(version: str, ocean_configured: bool) -> str:
 <script>
   const $ = selector => document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
-  const state = {{ mode:"lookalike", view:"companies", companies:[], people:[], downloadUrl:"", activeJob:"" }};
+  const PLACES_ONLY = {places_only_js};
+  const state = {{ mode:PLACES_ONLY?"places":"lookalike", view:"companies", companies:[], people:[], downloadUrl:"", activeJob:"" }};
   const textValue = selector => $(selector).value.trim();
   const numericValue = selector => Number($(selector).value || 0);
   const boolValue = selector => $(selector).checked;

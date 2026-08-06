@@ -111,7 +111,11 @@ class ScrapeRequest(OceanSearchRequest):
 @app.get("/", response_class=HTMLResponse)
 def dashboard() -> HTMLResponse:
     return HTMLResponse(
-        render_dashboard(version=__version__, ocean_configured=ocean_configured()),
+        render_dashboard(
+            version=__version__,
+            ocean_configured=ocean_configured(),
+            places_only=forced_provider() == "google_places",
+        ),
         headers={"Cache-Control": "no-store, max-age=0"},
     )
 
@@ -214,7 +218,7 @@ def execute_ocean_search(
     store: OceanLeadStore | None = None,
 ) -> dict[str, object]:
     report = progress or (lambda _value, _stage, _message: None)
-    if request.provider == "google_places":
+    if request.provider == "google_places" or forced_provider() == "google_places":
         return execute_places_search(request, report, store=store)
     if request.mode not in {"lookalike", "filters"}:
         raise HTTPException(status_code=400, detail="Search mode must be lookalike or filters.")
@@ -571,6 +575,11 @@ def attach_revealed_emails(
         contact["email_status"] = status
         contact["verified_email"] = address if is_verified_email_status(status) else ""
     return complete
+
+
+def forced_provider() -> str:
+    """Pin every search to one provider, e.g. while Ocean credits are empty."""
+    return os.getenv("LEAD_PROVIDER", "").strip().lower()
 
 
 def is_verified_email_status(status: object) -> bool:

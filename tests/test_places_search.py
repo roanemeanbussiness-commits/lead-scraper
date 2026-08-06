@@ -111,5 +111,44 @@ class PlacesSearchRouteTests(unittest.TestCase):
         self.assertIn("GooglePlacesAPI", str(caught.exception.detail))
 
 
+
+class ForcedProviderTests(unittest.TestCase):
+    @patch.dict("os.environ", {"LEAD_PROVIDER": "google_places"})
+    def test_ocean_request_is_routed_to_places_when_pinned(self) -> None:
+        """With Ocean paused, an ocean-provider request must not call Ocean."""
+
+        class ExplodingOceanClient:
+            def available_credits(self):
+                raise AssertionError("Ocean must not be contacted while paused")
+
+            def search_companies(self, **_kwargs):
+                raise AssertionError("Ocean must not be contacted while paused")
+
+        request = OceanSearchRequest(
+            provider="ocean",
+            mode="filters",
+            keywords_any="construction",
+            city="San Antonio",
+            state="TX",
+            target_type="emails",
+            target_count=1,
+        )
+        with patch("lead_scraper.web.google_places_configured", return_value=True), patch(
+            "lead_scraper.web.search_places_leads", return_value=[]
+        ) as places:
+            result = execute_ocean_search(
+                request, client=ExplodingOceanClient(), store=FakeStore()
+            )
+
+        self.assertEqual("Google Places", result["provider"])
+        self.assertEqual("construction", places.call_args.kwargs["query"])
+        self.assertEqual("San Antonio, TX", places.call_args.kwargs["location"])
+
+    @patch.dict("os.environ", {"LEAD_PROVIDER": ""})
+    def test_ocean_still_runs_when_not_pinned(self) -> None:
+        from lead_scraper.web import forced_provider
+
+        self.assertEqual("", forced_provider())
+
 if __name__ == "__main__":
     unittest.main()
