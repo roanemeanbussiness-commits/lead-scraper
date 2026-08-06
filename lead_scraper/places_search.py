@@ -140,6 +140,11 @@ def search_places_leads(
         keyword_discovery_queries(query, pool),
         location,
         max_results=min(600, pool),
+        progress=lambda done, total, found: report(
+            10 + round(18 * done / max(1, total)),
+            "Google Places",
+            f"Searched {done} of {total} queries, {found} businesses found",
+        ),
     )
     places = [
         place

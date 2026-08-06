@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 import math
+import time
 from dataclasses import dataclass
+from typing import Callable
 from urllib.parse import urlparse
 
 import httpx
@@ -65,8 +67,56 @@ class PlaceLead:
     category: str = ""
 
 
+class GooglePlacesError(RuntimeError):
+    pass
+
+
 def google_places_configured() -> bool:
     return bool(get_google_maps_api_key())
+
+
+def request_places_page(
+    client: httpx.Client,
+    headers: dict[str, str],
+    payload: dict[str, object],
+) -> dict | None:
+    """One Places page with retries. Returns None when the page is unavailable.
+
+    Google returns 429/503 under load often enough that a single blip must not
+    kill a whole search, so transient failures are retried and then skipped.
+    A 4xx other than 429 is a real configuration problem and is raised.
+    """
+    for attempt in range(4):
+        try:
+            response = client.post(PLACES_URL, headers=headers, json=payload)
+        except httpx.RequestError:
+            if attempt == 3:
+                return None
+            time.sleep(2**attempt)
+            continue
+        if response.status_code == 429 or response.status_code >= 500:
+            if attempt == 3:
+                return None
+            time.sleep(2**attempt)
+            continue
+        if response.status_code >= 400:
+            raise GooglePlacesError(
+                f"Google Places returned {response.status_code}: "
+                f"{places_error_detail(response)}"
+            )
+        return response.json()
+    return None
+
+
+def places_error_detail(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+    except ValueError:
+        return response.text.strip()[:300] or "Unknown Places error"
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if isinstance(error, dict):
+        return str(error.get("message") or error.get("status") or error)[:300]
+    return str(payload)[:300]
 
 
 def search_google_places(query: str, location: str, max_results: int = 20) -> list[PlaceLead]:
@@ -98,9 +148,9 @@ def search_google_places(query: str, location: str, max_results: int = 20) -> li
             if page_token:
                 payload["pageToken"] = page_token
 
-            response = client.post(PLACES_URL, headers=headers, json=payload)
-            response.raise_for_status()
-            data = response.json()
+            data = request_places_page(client, headers, payload)
+            if data is None:
+                break
 
             for place in data.get("places", []):
                 website = place.get("websiteUri") or ""
@@ -132,7 +182,12 @@ def search_google_places(query: str, location: str, max_results: int = 20) -> li
     return leads
 
 
-def search_google_places_queries(queries: list[str], location: str, max_results: int = 160) -> list[PlaceLead]:
+def search_google_places_queries(
+    queries: list[str],
+    location: str,
+    max_results: int = 160,
+    progress: Callable[[int, int, int], None] | None = None,
+) -> list[PlaceLead]:
     """Search several semantic discovery queries and dedupe the shared candidate pool."""
     clean_queries = list(dict.fromkeys(query.strip() for query in queries if query.strip()))
     if not clean_queries or max_results <= 0:
@@ -143,8 +198,16 @@ def search_google_places_queries(queries: list[str], location: str, max_results:
     per_query = min(60, max(10, math.ceil(max_results * 1.35 / len(clean_queries))))
     results: list[PlaceLead] = []
     seen: set[str] = set()
-    for query in clean_queries:
-        for place in search_google_places(query, location, max_results=per_query):
+    failures = 0
+    for index, query in enumerate(clean_queries, start=1):
+        try:
+            found = search_google_places(query, location, max_results=per_query)
+        except GooglePlacesError:
+            raise
+        except Exception:  # noqa: BLE001 - one bad query must not end the sweep
+            failures += 1
+            found = []
+        for place in found:
             domain = (urlparse(place.website).hostname or "").lower().removeprefix("www.")
             key = place.place_id or domain
             if not key or key in seen:
@@ -152,7 +215,15 @@ def search_google_places_queries(queries: list[str], location: str, max_results:
             seen.add(key)
             results.append(place)
             if len(results) >= max_results:
+                if progress:
+                    progress(index, len(clean_queries), len(results))
                 return results
+        if progress:
+            progress(index, len(clean_queries), len(results))
+    if not results and failures == len(clean_queries):
+        raise GooglePlacesError(
+            "Google Places is unavailable right now (every query failed). Try again shortly."
+        )
     return results
 
 

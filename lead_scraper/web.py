@@ -447,6 +447,10 @@ def execute_places_search(
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 - surface crawl failures as a clean message
+        raise HTTPException(
+            status_code=502, detail=f"Google Places search failed: {exc}"
+        ) from exc
 
     export_rows = [
         {
