@@ -226,7 +226,7 @@ def render_dashboard(
         <div class="details-body">
           <div class="grid-2">
             <div><label for="target_type">Target</label><select id="target_type"><option value="companies">Companies</option><option value="emails">Verified emails</option></select></div>
-            <div><label for="target_count">Target count</label><input id="target_count" type="number" min="1" max="1000" value="100"></div>
+            <div><label for="target_count">Target count</label><input id="target_count" type="number" min="1" max="1000" value="50"></div>
           </div>
           <div class="cost"><div><strong id="standard-cost">40</strong><span>max standard credits</span></div><div><strong id="email-cost">100</strong><span>max email credits</span></div></div>
         </div>

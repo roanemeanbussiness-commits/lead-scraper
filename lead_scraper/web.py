@@ -65,7 +65,7 @@ class OceanSearchRequest(BaseModel):
     year_founded_from: int | None = Field(None, ge=0, le=2100)
     year_founded_to: int | None = Field(None, ge=0, le=2100)
     target_type: str = "companies"
-    target_count: int = Field(100, ge=1, le=1000)
+    target_count: int = Field(50, ge=1, le=1000)
     find_contacts: bool = True
     reveal_emails: bool = True
     people_per_company: int = Field(1, ge=1, le=10)
