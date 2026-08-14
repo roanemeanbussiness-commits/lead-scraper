@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from . import __version__
 from .dashboard import render_dashboard
-from .knowledge_loader import build_system_prompt
+from .knowledge_loader import build_compact_prompt, build_system_prompt
 from .llm import ChatClient, OpenAIError, chat_model, openai_configured
 from .store import ChatStore
 from .youtube import (
@@ -72,13 +72,19 @@ def chat(request: ChatRequest) -> StreamingResponse:
     STORE.add_message(conversation_id, "user", request.message)
     STORE.set_title_if_empty(conversation_id, request.message.splitlines()[0][:80])
 
-    history = STORE.messages(conversation_id, limit=HISTORY_LIMIT)
-    messages: list[dict[str, str]] = [
-        {"role": "system", "content": build_system_prompt(STORE)}
-    ]
+    # The search model runs under a much tighter tokens-per-minute limit
+    # than the writing model, so research mode gets a compact prompt and a
+    # short history window instead of the full knowledge base.
+    if request.research:
+        system_prompt = build_compact_prompt()
+        history = STORE.messages(conversation_id, limit=6)
+        model = search_model()
+    else:
+        system_prompt = build_system_prompt(STORE)
+        history = STORE.messages(conversation_id, limit=HISTORY_LIMIT)
+        model = None
+    messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
     messages.extend({"role": m["role"], "content": m["content"]} for m in history)
-
-    model = search_model() if request.research else None
 
     def event_stream() -> Iterator[str]:
         yield sse({"type": "start", "conversation_id": conversation_id})

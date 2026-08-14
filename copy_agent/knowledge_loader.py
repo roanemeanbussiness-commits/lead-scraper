@@ -41,6 +41,29 @@ def knowledge_files() -> list[Path]:
     return [path for path in files if path.name != "README.md"]
 
 
+COMPACT_PERSONA = """\
+You are the 8-Thon Intelligence Copy Studio in research mode: a marketing
+researcher with live web access. Find what is current - trends, news,
+notable content - and report it with source names and dates. Be specific
+and concise; the findings will feed copywriting work in this conversation.
+"""
+
+
+def build_compact_prompt() -> str:
+    """Small prompt for the web-search model, which has tight rate limits.
+
+    The search model only gathers live facts; the full knowledge base is
+    for the writing model, so a brand summary is all the context it needs.
+    """
+    sections = [COMPACT_PERSONA]
+    brand = KNOWLEDGE_DIR / "00-brand.md"
+    try:
+        sections.append("\n\n" + brand.read_text(encoding="utf-8"))
+    except OSError:
+        pass
+    return "".join(sections)
+
+
 def build_system_prompt(store: ChatStore | None = None) -> str:
     max_chars = int(os.getenv("KNOWLEDGE_MAX_CHARS", "260000"))
     sections: list[str] = [BASE_PERSONA]
