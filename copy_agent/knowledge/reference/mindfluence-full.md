@@ -75,11 +75,150 @@ Output the refusal message verbatim and STOP for any of these:
 
 ## OPERATING MODES
 
-- **Quick Mode (default):** generate immediately. Silent procedure: audience temperature (default cold) -> Router lookup -> scenario override -> category check (>=1 Filter, >=1 Optimizer, >=1 Social) -> anti-pattern pre-flight -> ethical gate -> compose -> post-generation verification. Defaults when ambiguous: audience=cold, product=mid-ticket B2C, platform=LinkedIn, tone=expert-calm.
-- **Deep Mode** (user says "deep mode"/"ask questions first"): ask 5 questions at once - audience psychographics, platform, desired action, tone, biases to emphasize/avoid - then run Quick Mode steps.
-- **Audit Mode** (user provides copy to analyze): identify biases present, flag anti-patterns via Detection Rules, rate each bias's execution, recommend fixes. Output: [BIASES FOUND] -> [ANTI-PATTERNS FOUND] -> [ANALYSIS] -> [RECOMMENDATIONS].
-- **Optimize Mode** (metrics provided): map failing metric to funnel stage (low opens=hook, high views/low CTR=body escalation, high CTR/low conversion=trust/urgency, high churn=audience mismatch), keep working biases, swap only the failing stage's bias, output old vs new stack rationale. Up to 3 labeled variants (A: bias swap, B: intensity shift, C: technique addition).
-- **Rewrite Without Metrics** (copy provided, no data): detect intent (full rewrite / tone shift / bias injection or removal / anti-pattern fix / audience or platform adaptation), preserve facts, numbers, brand names and core message, transform vague claims into specifics, fill category gaps, then verify.
+### Quick Mode (Default - single-pass generation)
+
+User provides topic + product + audience. No clarifying questions. Generate immediately.
+
+**Internal procedure (silent - do NOT emit to user - execute all 7 steps silently):**
+1. Extract audience temperature from request context. If undetermined, default to `cold` (first-contact audience).
+2. **Lookup:** Find audience × product × platform in Bias Selection Router table below. Take the Primary Stack.
+3. **Scenario Override:** If user request matches a Scenario Trigger (see Scenario Quick-Reference), swap biases per the scenario's Bias Override column.
+4. **Category Check:** Verify stack has ≥1 Filter, ≥1 Optimizer, ≥1 Social bias (use the Quick-Reference Card at the top of this skill). Dual-category biases count for both.
+5. **Anti-Pattern Pre-Flight:** Scan the Anti-Patterns Detection Rules against your planned bias stack. Fix any FAIL before writing.
+6. **Ethical Gate:** Verify request against REFUSAL POLICY + ETHICAL BOUNDARIES NEVER list. Refuse if triggered.
+7. Compose and output - then run Post-Generation Verification (mandatory checkboxes) before delivering to user.
+
+Defaults when ambiguous: Audience=cold, Product=mid-ticket B2C, Platform=LinkedIn, Tone=expert-calm.
+
+### Deep Mode
+
+User says "deep mode", "customize", "ask questions first", or the task is ambiguous.
+
+**Ask these 5 questions (all at once):**
+1. Target audience psychographics - beliefs, fears, desires, identity signals?
+2. Platform / channel - Twitter/X, LinkedIn, Instagram, email, landing page, etc.?
+3. Desired action - click, subscribe, buy, share, think differently?
+4. Tone preference (can auto-detect from context)?
+5. Any specific biases to emphasize or avoid?
+
+**After receiving answers:**
+1. Plug audience + product + platform into Bias Selection Router → get Primary Stack.
+2. Apply Scenario Override if a trigger matches.
+3. Adjust stack per user's emphasized/avoided biases.
+4. Continue with steps 4–7 of Quick Mode (Category Check → Anti-Pattern Pre-Flight → Ethical Gate → Compose + Verify).
+
+### Audit Mode
+
+User provides existing copy for analysis. Do NOT create new content.
+
+**Procedure:**
+1. Read the user's copy carefully.
+2. Identify which cognitive biases are present (intentional or accidental). Use the Bias Catalog for reference.
+3. Flag anti-patterns found - use Anti-Patterns Detection Rules below. Flag every anti-pattern.
+4. For each bias found: rate its execution (effective / neutral / counterproductive) and explain why.
+5. Suggest specific improvements: which biases to add, which to strengthen, which to fix per anti-patterns.
+
+**Output format:** `[BIASES FOUND] → [ANTI-PATTERNS FOUND] → [ANALYSIS per bias] → [RECOMMENDATIONS]`
+
+### Optimize Mode
+
+User provides performance data from an existing piece of marketing copy and asks you to improve it. Do NOT create from scratch - iterate based on evidence.
+
+**Procedure:**
+1. Read the original copy and the metrics provided (open rate, CTR, conversion rate, scroll depth, reply rate, A/B test results, or qualitative feedback).
+2. Identify which stage of the funnel is underperforming. Metric → stage mapping:
+   - Low open rate / low views → **Hook failure.** Re-examine the first bias (usually Availability / Fear / Framing). Check anti-patterns #2, #3, #11.
+   - High views, low CTR → **Interest failure.** The hook worked, but the body didn't escalate. Re-examine middle biases. Check anti-patterns #1, #4, #7, #8.
+   - High CTR, low conversion → **Trust/Urgency failure.** Prospect is interested but not convinced. Re-examine close biases. Check anti-patterns #5, #6, #12.
+   - High unsubscribe / low retention → **Mismatch with audience temperature.** Re-classify audience and re-run the Router.
+3. Keep the biases that worked. Replace ONLY the biases at the failing stage - swap with the next-best alternative from the Router for the same audience temperature and product type.
+4. Generate the revised copy with updated `[BIASES ENGAGED]` and `[RATIONALE]` comparing old vs new stack.
+5. Preserve the original tone and target action unless the user explicitly requests changing them.
+6. Generate up to 3 variants (A: bias swap, B: intensity shift, C: technique addition) if user wants A/B tests. Label each distinctly.
+
+**Output format for Optimize Mode:**
+```
+[ORIGINAL BIAS STACK] → [ISSUE FOUND] → [ADJUSTED STACK] → [REVISED CONTENT]
+
+[RATIONALE]
+What changed, why, and how the new stack addresses the specific performance gap.
+```
+
+**Trigger (metric-driven):** User says "optimize", "iterate", "A/B test", "this didn't convert", "open rate dropped", "CTR is low", or provides metrics alongside copy.
+
+**Trigger (qualitative rewrite - no metrics):** User provides existing copy without performance data and says "rewrite", "re-write", "перепиши", "рерайт", "improve this", "улучши это", "enhance", "усиль", "fix this", "исправь", "make this more persuasive", "сделай убедительнее", "add [bias] to this", "change tone to", "перепиши в [tone] тоне", "adapt for [audience/platform]", "адаптируй под".
+
+### Rewrite Without Metrics (Optimize Mode variant)
+
+When the user provides existing copy WITHOUT performance metrics, do NOT run the metric-driven procedure above. Use this qualitative rewrite procedure instead:
+
+**Rewrite Intents (user can specify one or more - auto-detect from request):**
+
+| User says | Intent | Behavior |
+|-----------|--------|----------|
+| "rewrite", "перепиши", "improve this" (no specifics) | **Full rewrite** | Re-run Router for detected audience×product×platform. Rewrite entire text. Preserve core message + key facts. |
+| "change tone to [X]", "перепиши в [X] тоне" | **Tone shift** | Keep bias stack. Change voice profile, lexical markers, cadence. Apply new tone's Narrative Minimum. |
+| "add [bias]", "добавь [bias]" | **Bias injection** | Preserve existing text. Inject specified bias at natural insertion points. Verify no conflicts via Bias Conflict Detector. |
+| "remove [bias]", "убери [bias]" | **Bias removal** | Remove bias execution. Replace with neutral or alternative. Verify category coverage survives removal. |
+| "fix anti-patterns", "исправь антипаттерны" | **Anti-pattern fix** | Run Detection Rules on original. Fix each FAIL. Most conservative - change only what's broken. |
+| "adapt for [audience]", "адаптируй под" | **Audience adaptation** | Re-run Router for new audience temperature. Adjust bias stack + tone. |
+| "adapt to [platform]", "переделай в [platform]" | **Platform adaptation** | Re-run Router for new platform. Apply platform constraints (e.g., COMPACT for Twitter/X, cold outreach rules for email/DM). |
+
+**Procedure (5 steps):**
+
+1. **Read & extract** silently: core message (1 sentence), key claims (numbers, names, quotes), detected tone, detected platform, detected audience temperature.
+2. **Audit internal** silently: which biases are present? Which anti-patterns trigger? Category gaps? Do NOT emit audit to user - use it to inform rewrite.
+3. **Determine intent** from user request. If user provides text with no specific instruction, default to Full Rewrite.
+4. **Build target bias stack** per intent:
+   - Full rewrite / Audience/Platform adaptation → re-run Router (lookup → scenario override → category check → conflict detector)
+   - Tone shift → keep existing stack, re-verify category coverage
+   - Bias injection/removal → modify existing stack, re-verify category coverage
+   - Anti-pattern fix → keep existing stack, fix execution per Detection Rules
+5. **Rewrite & verify** - apply Post-Generation Verification (6 checks), apply narrative depth requirements.
+
+**Preservation rules - MUST survive rewriting:**
+- Specific facts, numbers, named sources from the original (unless they trigger anti-patterns)
+- Core message and value proposition
+- Brand name, product name, pricing
+- Unchanged tone (unless tone shift intent)
+
+**Transformation rules - SHOULD change:**
+- Vague claims → specific numbers (AP-1, AP-3, AP-4, AP-11)
+- Missing narrative → NPSA / conversational direct address / unexpected detail
+- Category gaps → filled
+- Weak bias execution → strengthened per Bias Catalog application patterns
+
+**Output format for Rewrite (STANDARD):**
+
+```
+[REWRITE: intent]
+[ORIGINAL BIASES: bias1, bias2...]
+[ANTI-PATTERNS FIXED: AP-N]  ← only if APs were found and fixed
+[NEW BIAS STACK: biasA(#N), biasB(#N)...]
+[TONE: style]
+[TARGET ACTION: ...]
+
+[REWRITTEN CONTENT]
+
+---
+[WHAT CHANGED]
+- Structural: [bias stack changes + why]
+- Specificity: [vague → concrete claims added]
+- Narrative: [NPSA / conversational / unexpected detail added]
+- Preserved: [key elements kept from original]
+
+[VERIFICATION]
+1. □ Numbers  2. □ Names  3. □ Exit  4. □ Explain  5. □ Blame-system  6. □ HUMAN
+```
+
+**Edge cases:**
+- No text provided → ask: "I need the text you want me to rewrite."
+- Non-marketing text → refuse: "Rewrite Mode is for marketing content."
+- Text violates Refusal Policy → standard refusal message.
+- Audit→Rewrite pipeline: if user ran Audit first, use those findings. Don't re-audit.
+- Text too short (<3 sentences, no clear marketing intent) → offer Quick Mode as alternative.
+
+---
 
 ## THE BRAIN'S OPERATING SYSTEM (Kahneman's Two Systems)
 
@@ -211,245 +350,311 @@ If the user's request matches a trigger word, apply the Bias Override (swap bias
 
 ## BIAS CATALOG
 
-
----
-
 ### 1. SOCIAL PROOF / BANDWAGON EFFECT
 *Category: Social* | *Anti-pattern risk: AP-1 (Vague Social Proof)*
 *System 1 shortcut: «Everyone is doing it → it must be right.»*
+
 **Mechanism:** The brain interprets group behavior as a safety signal. The amygdala deactivates when we follow the crowd. Numbers, testimonials, ratings - anything that signals "many people chose this" - bypass skepticism.
+
 **Application:**
 - Specific numbers over vague claims: "14,327 users this week" > "thousands of users"
 - Real-time social proof: "23 people are viewing this now"
 - Faces + full names + roles in testimonials (anonymous = no proof)
-
+- Platform metrics as authority: "2.4M views" on a video
+- The queue effect: "847 people ahead of you" = social proof + scarcity
+- Community framing: "Join 12,000+ builders" - sell belonging, not just product
 
 ---
 
 ### 2. ANCHORING
 *Category: Optimizer*
 *System 1 shortcut: «First number I see = the reference point.»*
+
 **Mechanism:** The brain takes the first piece of information as the reference. All subsequent evaluations are relative to that anchor. The anchor doesn't need to be logical - just first.
+
 **Application:**
 - Show most expensive option FIRST. Everything after seems reasonable.
 - Dropbox pattern: Base($9) → Pro($16) → Advanced($15). $16 = pain anchor; $15 feels like a deal.
 - Coffee-size trick: Small($3.60) → Medium($3.80) → Large($3.90). Large wins on the $0.10 gap from Medium.
-
+- Pre-price anchoring: "Consulting like this typically costs $5,000. Our program: $997."
+- Time anchoring: "Usually takes 6 months. Our method: 4 weeks."
+- Competitor anchoring: "The market average is X. We charge Y."
 
 ---
 
 ### 3. FRAMING
 *Category: Filter* | *Anti-pattern risk: AP-3 (Framing Without Anchoring)*
 *System 1 shortcut: «The frame IS the meaning.»*
+
 **Mechanism:** The brain evaluates information not by content but by the frame. Same fact, opposite reaction - depending on wording. Frames operate before conscious analysis.
+
 **Application:**
 - Loss frame over gain frame: "Don't miss 30% savings" > "Save 30%" (loss aversion is ~2x stronger)
 - Problem-first framing: vivid problem → then solution. Pain creates value perception.
 - «Not X, but Y» frame: "This isn't another course. This is a system."
-
+- Cost reframing: "Less than your daily coffee" reframes a subscription.
+- Time reframing: "Delivery takes 5 days - each piece is handmade for you."
+- Category reframing: Don't compete in a crowded category. Create a new one. "This isn't a CRM. It's your business OS."
 
 ---
 
 ### 4. APPEAL TO AUTHORITY
 *Category: Social* | *Anti-pattern risk: AP-4 (Authority Without Proof)*
 *System 1 shortcut: «If an expert said it → questioning is socially risky.»*
+
 **Mechanism:** The brain delegates truth evaluation to trusted figures. An energy-saving shortcut: verifying every claim independently would exhaust System 2.
+
 **Application:**
 - Cite specific research: "A Harvard Business Review study found..." > "studies show..."
 - Named source + year + specific finding: "Harvard Business Review, March 2023: 'Teams using async comms ship 23% faster.'"
 - Domain experts over celebrities (for credibility-sensitive audiences)
-
+- Certifications, credentials, media logos displayed prominently
+- Sakharov's technique: acknowledge respect for an opposing figure, then disagree. It makes YOU look objective.
+- 3rd-party validator: let someone else say it about you (case studies, press, reviews)
+- "Recommended by...", "Used at...", "Certified by..."
 
 ---
 
 ### 5. FEAR APPEAL / LOSS AVERSION
 *Category: Filter + Social* | *Anti-pattern risk: AP-2 (Fear Without an Exit)*
 *System 1 shortcut: «Threat detected → override everything.»*
+
 **Mechanism:** The amygdala responds to perceived threats before the neocortex can evaluate. Fear bypasses logic. Losses hurt ~2× more than equivalent gains feel good.
+
 **Application:**
 - The Fear Funnel: Identify threat → amplify vividness → show cost of inaction → present solution as safety
 - Future-regret framing: "A year from now, you'll either thank yourself or wish you had."
 - Concrete loss > abstract loss: "You're losing $350 per day" > "You're missing opportunities"
-
+- Competitor threat: "While you wait, your competitors are..." (fear + social proof)
+- Social exclusion: "87% of your industry has already adopted this"
+- Invisible threat: "Just because you can't see the problem doesn't mean it isn't there" - activates the "saber-tooth in the bushes" circuit
 
 ---
 
 ### 6. AVAILABILITY HEURISTIC
 *Category: Optimizer* | *Anti-pattern risk: AP-11 (Abstract Availability)*
 *System 1 shortcut: «If I can easily recall it → it must be common and important.»*
+
 **Mechanism:** The brain estimates probability by how easily examples come to mind. Vivid, emotional, recent, or repeated information dominates - not statistics.
+
 **Application:**
 - Vivid stories over statistics: "Maria from Barcelona doubled revenue in 3 months" > "Average revenue growth is 47%"
 - Repetition = truth: brand consistency across channels builds familiarity-trust
 - Ride availability waves: time campaigns around recent, emotionally charged events
-
+- Visual availability: striking metaphors, unusual comparisons create memorable mental images
+- "Have you ever noticed..." hooks: make the reader recognize the bias in themselves
+- Negative news exploitation: negativity is +30% more engaging. Use ethically: highlight real problem → provide solution
 
 ---
 
 ### 7. CONFIRMATION BIAS
 *Category: Filter* | *Anti-pattern risk: AP-10 (Insulting Confirmation)*
 *System 1 shortcut: «I only look for what I already believe.»*
+
 **Mechanism:** The brain actively seeks and remembers confirming evidence while ignoring contradictions. This is the strongest filter. It's why believers become evangelists and skeptics are nearly impossible to convert.
+
 **Application:**
 - Don't convert skeptics - activate believers. Target those who already lean toward your solution.
 - «You were right» content: tell the audience their existing belief was smart. Triggers dopamine + loyalty.
 - Polarization as strategy: take a stand. The disagreeing won't buy. The agreeing will love you more.
-
+- Pre-suasion: get a "yes" on something related before the main ask. "You agree time is your most valuable asset, right?"
+- Identity congruence: "For people who are serious about..." - the product becomes an identity marker.
+- User-generated content: let customers create. Their confirmation bias (they bought it → it must be good) generates authentic marketing.
 
 ---
 
 ### 8. COGNITIVE DISSONANCE
 *Category: Filter + Optimizer* | *Anti-pattern risk: AP-12 (Blaming Dissonance)*
 *System 1 shortcut: «Discomfort must be resolved - and changing the belief is easier than changing reality.»*
+
 **Mechanism:** When beliefs and reality conflict, the brain feels psychological discomfort. Resolving it by changing reality is hard; changing the belief is easy. The brain almost always reinterprets reality rather than admit error.
+
 **Application:**
 - Post-purchase rationalization: feed buyers evidence they made the right choice (onboarding, success stories)
 - Escalating investment: free content → webinar → trial → purchase. Each "yes" builds investment that's painful to abandon.
 - Create and resolve dissonance: surface a contradiction in the reader's life. "You say health is priority #1. When was your last checkup?" The discomfort demands resolution - your product can provide it.
-
+- Blame circumstances, not the person: "Even experienced users hit this snag. Here's the quick fix." Preserve their self-image.
+- Sunk cost bridge: "You've already invested 2 years in this skill. The next level takes 4 weeks."
 
 ---
 
 ### 9. SURVIVORSHIP BIAS
 *Category: Optimizer*
 *System 1 shortcut: «I only see winners → winning must be the norm.»*
+
 **Mechanism:** The brain draws conclusions from visible successes while ignoring invisible failures. Every "overnight success" had 100 identical attempts that failed silently. Classic illustration: Wald's bullet-hole problem (World War II). Statistician Abraham Wald analyzed planes returning from combat. The military wanted to armor the areas with the most bullet holes. Wald argued: armor the areas with the FEWEST holes - those are the hits that brought planes down. The surviving planes (visible) misrepresent where the real danger is. Marketing parallel: your testimonials show survivors. Your churned customers show where your product actually breaks.
+
 **Application:**
 - Show your best results (with credibility): "This is one of our top outcomes" > implying everyone achieves it
 - "Why they succeeded" frame: explain the specific factors - with your product as the key factor
 - Inoculation: "Not everyone achieves these results. Here's what distinguishes those who do..."
-
+- The gated path: "Only 3 in 10 applicants pass our selection" - uses survivorship to create exclusivity
+- Interview successful customers in detail. Vividness embeds the success in readers' minds.
+- Wald's lesson for marketers: study the failures, not just the wins. The silent majority tells you what to fix.
 
 ---
 
 ### 10. ENDOWMENT EFFECT
 *Category: Optimizer*
 *System 1 shortcut: «What's mine is worth more.»*
+
 **Mechanism:** People ascribe more value to things they own. Ownership - even imaginary or temporary - creates emotional attachment.
+
 **Application:**
 - Free trial: once they use it, it feels like theirs. Canceling = losing something they own. Most powerful SaaS tactic.
 - Customization/personalization: "Your personalized plan", "Your library" - pseudo-ownership before purchase
 - Visualization: "Imagine this tool is already yours. Your day looks like this..."
-
+- Freemium + free samples: give something away. The endowment effect raises perceived value of the full product.
+- "Take away" close: "Try free for 30 days. If it's not for you, just cancel." They imagine owning, then imagine losing it.
 
 ---
 
 ### 11. FUNDAMENTAL ATTRIBUTION ERROR
 *Category: Social*
 *System 1 shortcut: «Others fail because of who they ARE. I fail because of CIRCUMSTANCES.»*
+
 **Mechanism:** We attribute others' actions to character (lazy, stupid) but our own to external circumstances (tired, system broken). Permanent asymmetry in human judgment.
+
 **Application:**
 - Blame the system, not the person: never blame the prospect for their problem. "The tax code is designed to be confusing." You're the ally against an unfair world.
 - The redemption arc: "I used to think this wasn't for me. Turns out I just didn't know one thing."
 - Us vs. The System: customers are smart people struggling against a broken system. Your product is the fix. The enemy: status quo, bureaucracy, outdated ways, "they."
-
+- Competitor framing: never say competitor's customers are dumb. "Many chose X because Y wasn't available. Now it is."
 
 ---
 
 ### 12. SUNK COST FALLACY
 *Category: Optimizer* | *Anti-pattern risk: AP-7 (Premature Sunk Cost)*
 *System 1 shortcut: «I've already invested too much to stop now.»*
+
 **Mechanism:** The brain treats past investments as reasons to continue, even when irrational. Abandoning = admitting waste.
+
 **Application:**
 - Escalating commitment ladder: small asks → medium asks → big ask. Each "yes" makes the next more likely.
 - "You've come this far": explicitly acknowledge their investment. "You've read 3,000 words. Last step." LATE-STAGE only.
 - Progressive profiling: forms ask minimal info first. Each field = smaller additional commitment.
-
+- Loyalty ladder: "You've been with us 2 years. As a valued customer, you get..."
+- Cost-recovery frame: "You're already paying $200/month for [competitor]. Switching pays for itself in 2 months."
 
 ---
 
 ### 13. STATUS QUO BIAS
 *Category: Filter*
 *System 1 shortcut: «Change is dangerous. Familiar is safe.»*
+
 **Mechanism:** The brain prefers things to stay the same. The known - even bad - feels safer than the unknown. The amygdala activates at the prospect of change.
+
 **Application:**
 - Risk reversal: money-back guarantee, free trial, free returns, "cancel anytime." Every purchase is change from status quo - remove every risk.
 - "Easier than you think": "Setup takes 15 minutes", "No training required", "Works with what you already have"
 - The bridge, not the leap: "You're already doing X. Our tool just does X 10× faster."
-
+- The familiarity pathway: create content about the PROBLEM for months before launching. The solution feels like the obvious, familiar next step.
+- "Don't change your habits. Just add this one step."
 
 ---
 
 ### 14. FALSE CONSENSUS EFFECT
 *Category: Social*
 *System 1 shortcut: «Everyone probably thinks like me.»*
+
 **Mechanism:** People overestimate how much others share their beliefs. Your prospect assumes their opinion is majority opinion. Validate it, and you create instant rapport.
+
 **Application:**
 - "We know you" messaging: "If you're like most of our readers, you're tired of..."
 - Tribe creation: name your audience. "Rational optimists", "Conscious parents", "Thinking marketers." Give a label that makes them feel like the sensible majority.
 - Poll/survey content: "We asked 5,000 founders. 78% said..." Readers assume they're in the 78%.
-
+- Polarizing content: voice a stance your audience holds but may not express. You become their voice.
+- Seed comments: show the desired consensus view. New readers see it and align.
 
 ---
 
 ### 15. IN-GROUP FAVORITISM
 *Category: Social* | *Anti-pattern risk: AP-8 (Empty In-Group)*
 *System 1 shortcut: «Us vs. Them - and I'm with Us.»*
+
 **Mechanism:** The brain automatically favors in-group members and distrusts outsiders. Any shared identity triggers in-group loyalty. For 99% of human history, strangers meant danger.
+
 **Application:**
 - Shared identity signals: language, references, humor that ONLY your audience understands
 - The common enemy: define an out-group (competitors, old ways, "they") and position your customers as the in-group
 - Exclusivity as belonging: "Private community for...", "Only for..."
-
+- "People like us" framing: "People like you...", "In your position..." - requires named identity + shared experience + out-group.
+- The convert narrative: "I was on your side 10 years ago. Then I understood..." You were once out-group. Now in-group. The prospect can join you.
 
 ---
 
 ### 16. HALO EFFECT
 *Category: Optimizer* | *Anti-pattern risk: AP-9 (Wrong-Source Halo)*
 *System 1 shortcut: «One good trait → everything is good.»*
+
 **Mechanism:** A single positive attribute creates a "halo" coloring all other judgments. Beautiful = smart. Famous brand = better product. Confident speaker = correct.
+
 **Application:**
 - Design IS trust: beautiful design = reliable product in the user's brain. Hero visual is non-negotiable.
 - Presenter quality: the person in your video IS your product. Invest in on-camera talent.
 - Brand prestige transfer: co-brand, partner, get featured alongside prestigious brands. Their halo rubs off.
-
+- One killer feature first: if it impresses, the halo makes everything else seem impressive.
+- Premium context: show your product in premium environments. The halo of marble, glass, open spaces transfers.
+- Voice and tone: deep voices = authority. Clear, slow speech = truthfulness.
 
 ---
 
 ### 17. HINDSIGHT BIAS
 *Category: Optimizer*
 *System 1 shortcut: «I knew it all along.»*
+
 **Mechanism:** After knowing an outcome, the brain rewrites memory to make it seem predictable. Protects the ego. Note: Hindsight bias weakens under high cognitive load - when the reader is multitasking, distracted, or processing dense information, the "I knew it" effect is less potent. Apply when the reader has attention to reflect, not in high-clutter formats (push notifications, search ads, rapid-scroll feeds).
+
 **Application:**
 - "We predicted this" content: "Back in 2022 we said [trend] would dominate. Here we are."
 - Post-event analysis: "Why [event] was inevitable" - capitalize on what your audience is processing
 - Trend reports: publish predictions. If right, reference them forever. If wrong, own it humorously.
-
+- "The signs were there" frame: "5 signs [trend] was coming (we spotted them in January)"
 
 ---
 
 ### 18. BACKFIRE EFFECT
 *Category: Filter*
 *System 1 shortcut: «Evidence against my belief makes me believe it MORE.»*
+
 **Mechanism:** Contradicting deeply held beliefs often strengthens them. Correcting misinformation can backfire - the correction becomes proof of conspiracy.
+
 **Application:**
 - Never correct - reframe: validate the belief, then show a bigger picture. "You're right that X matters. But there's also Y, which changes everything."
 - "Yes, and...": "Yes, cold calling works. AND there's a way to make it 3× more effective."
 - Inoculation, not conversion: you can't convert identity-invested opponents. Target the undecided.
-
+- Head-on reframing: "Many have heard that [category] doesn't work. And for 80% of market solutions, that's true. Here's why ours is different."
 
 ---
 
 ### 19. BIAS BLIND SPOT
 *Category: Filter*
 *System 1 shortcut: «Biases are for OTHER people, not for me.»*
+
 **Mechanism:** The most dangerous bias: believing YOU are less biased than others. Everyone sees biases in others; almost no one sees them in themselves.
+
 **Application:**
 - Make the prospect feel smart: "You're already doing most things right. We just remove the friction."
 - "We're all biased": acknowledge your own biases. "I believed [misconception] for years. Here's what changed my mind." Vulnerability = trust.
 - Meta-bias appeal: "Most people think cognitive biases are about other people. Smart people know they're about themselves." Sell self-awareness as status.
-
+- "You're probably skeptical - good": pre-empt the blind spot. "If you're skeptical about these claims - great. Let's look at the data."
 
 ---
 
 ### 20. GROUP POLARIZATION
 *Category: Social*
 *System 1 shortcut: «In groups, my views become more extreme.»*
+
 **Mechanism:** Like-minded groups amplify individual views. Groups don't moderate - they polarize. Creates highly engaged communities - and radicalization.
+
 **Application:**
 - Community design: build spaces (Slack, Discord, groups) where customers interact. Shared enthusiasm polarizes → deeper loyalty.
 - Events: in-person gatherings create the strongest polarization. Attendees return as evangelists.
 - Inner circles: "Power users", "Beta testers", "Ambassadors" - tiered access accelerates polarization.
+- Shared language and rituals: inside jokes, community terminology, traditions - polarization accelerators.
+- "Join 50,000+..." - the community IS the product feature.
+
+---
 
 ## SOCIAL CONTRACTS & BEHAVIORAL TECHNIQUES
 
@@ -538,7 +743,41 @@ Activation rule: if the user names a specific region/country/language, apply the
 | **E. Europe** (RU, PL, UA, CZ, RO) | Academic Authority, Directness, Fear/Loss | Hype, Exaggerated claims, Vague social proof | "Proven by..." | Skepticism as shared trait |
 | **C. Asia** (KZ, UZ, GE, AZ) | InGroup, Authority, Relationship-first | Cold transactional language | "Our people..." | Shared history/tradition |
 
-> For collectivist markets amplify SocialProof/InGroup/group framing; high power distance amplify institutional authority; high uncertainty avoidance amplify risk reversal, longer trials, stability framing; high-context cultures prefer implied anchors and indirect dissonance. Full matrix: cultural-matrix.md in the MindFluence repo.
+### Dimension-Specific Bias Adjustments
+
+For each bias in your stack, check ONLY the rows below that match the target region's dimensions:
+
+| Bias | Collectivist (East Asia, LatAm, ME, Africa, S.Asia) | High Power Distance (Russia, China, India, ME, LatAm) | High Uncertainty Avoidance (Japan, Germany, France, S.Europe, E.Europe) | High-Context (East Asia, ME, LatAm, Africa) |
+|------|-------------|-------------------|---------------------|------------|
+| SocialProof(#1) | AMPLIFY: group numbers, team framing | HYBRID: peer+authority proof | - | - |
+| Anchoring(#2) | - | - | - | Implied anchors (let reader calculate gap themselves) |
+| Framing(#3) | - | Frame product as authority's choice (top-down) | - | Subtle loss frame: implied risk, not shouted threat |
+| Authority(#4) | - | AMPLIFY: institutional authority, titles, certifications | - | - |
+| Fear(#5) | - | - | AMPLIFY: fear of losing stability/security. Future-regret framing potent. | - |
+| Confirmation(#7) | Confirm GROUP'S belief, not individual's | - | - | - |
+| CogDissonance(#8) | - | - | - | Surface indirectly: story about someone else, hypothetical |
+| Survivorship(#9) | Frame success as GROUP achievement | - | - | - |
+| Endowment(#10) | - | - | Longer trials (30-60 days). Explicit, generous risk reversal. | - |
+| FundAttrErr(#11) | System-blame is cultural default. Reinforce with group-level injustice. | - | - | - |
+| SunkCost(#12) | - | - | AMPLIFY. Admitting waste is face-threatening. | - |
+| StatusQuo(#13) | - | - | AMPLIFY. Every change must be bridged. | - |
+| FalseConsensus(#14) | AMPLIFY: "everyone thinks this way" inherently credible | - | - | - |
+| InGroup(#15) | AMPLIFY: strongest social bias. Sharp in/out-group boundary. | - | - | - |
+| HaloEffect(#16) | - | Halo from formal hierarchy: titles, institutions, govt endorsements | - | - |
+| HindsightBias(#17) | - | - | AMPLIFY: predictability=safety. Brand as reliable navigator. | - |
+| BackfireEffect(#18) | AMPLIFY: challenging group belief = collective defense | - | - | - |
+| BiasBlindSpot(#19) | Blind spot is collective: "WE are less biased than THEM" | - | - | - |
+| GroupPolarization(#20) | AMPLIFY: groups polarize faster. Monitor for toxicity. | - | - | - |
+
+### Technique Cultural Shifts
+
+| Technique | Collectivist | High UA | High PD |
+|-----------|-------------|---------|---------|
+| Scarcity | - | AMPLIFY RiskReversal alongside. Scarcity triggers anxiety, not urgency. | Requires MORE explanation of WHY constraint exists (anti-pattern #6 is critical here). |
+| Reciprocity | AMPLIFY: gift creates stronger obligation. Give MORE than in individualist markets. | - | - |
+| Risk Reversal | - | AMPLIFY: longer guarantees, visible processes, "60-day, no-questions, refund within 24h." | - |
+
+> **Deeper cultural context:** The inlined Quick-Reference covers the most common regional adjustments. For full bias-by-bias cultural adaptation across all 4 Hofstede dimensions with region-specific examples and edge cases (e.g., how to adapt Fear appeals for Japan, why Scarcity without RiskReversal backfires in France, how InGroup signals differ between Brazil and Nigeria), see `cultural-matrix.md` (https://github.com/MADEVAL/MindFluence/blob/main/cultural-matrix.md).
 
 ---
 
@@ -764,6 +1003,84 @@ Persuasion without measurement is superstition. The skill can generate copy, but
 4. **Generate a variant - not a rewrite.** Change only the sections powered by the swapped bias. Preserve the rest.
 5. **Label the test:** `[VARIANT: bias-A → bias-B, stage: Name]` so the user can A/B test.
 
+### Multi-Variant Testing
+
+When multiple stages underperform or when the user wants to test competing hypotheses, generate up to 3 variants simultaneously. Each variant tests ONE hypothesis:
+
+- **Variant A:** Swap the failing bias at the identified stage (standard iteration).
+- **Variant B:** Keep the original bias but change its INTENSITY - e.g., from implied fear to explicit fear, from individual social proof to group social proof. Test whether execution, not selection, was the problem.
+- **Variant C:** Add a technique (Scarcity, Reciprocity, Risk Reversal) without removing any bias. Test whether the stack was underpowered.
+
+Label each variant distinctly: `[VARIANT A: bias swap, stage: X]`, `[VARIANT B: intensity shift, stage: X]`, `[VARIANT C: technique addition, +Reciprocity]`.
+
+**Limit:** Never test more than 3 variants. Beyond 3, statistical confidence requires sample sizes that most campaigns never reach. If the user insists on more, explain the sample size problem.
+
+### Metrics Vocabulary
+
+When the user provides raw numbers without interpretation, translate them into bias language:
+- "Only 2% CTR" → "The hook engaged but the social proof in the body didn't escalate. Let's strengthen Bias #1 with a specific customer stat."
+- "High opens, zero replies" → "The fear hook worked, but reciprocity is missing. Let's add a genuine insight before the ask."
+- "Landing page: 70% bounce at hero" → "The framing didn't anchor to a concrete pain point. Let's add a quantified cost to the subhead."
+
+### Proactive Measurement Advice (always output for EXTENDED tier)
+
+```
+[WHAT TO MEASURE]
+- Primary metric: [auto-detect from content type]
+  · Landing page → CTA click rate + scroll depth to pricing
+  · Email → Open rate (subject line) + Click rate (body CTA)
+  · Social post → Engagement rate (likes+comments+shares / impressions)
+  · Ad → CTR (hook quality) + Conversion rate (landing alignment)
+  · Sales page → Scroll depth to offer + CTA click rate
+- Watch for: [1-2 specific anti-pattern symptoms relevant to this content]
+- If metric < benchmark: [which bias in stack is likely failing]
+- Minimum sample before iterating: [refer to Statistical Thresholds below]
+```
+
+### Statistical Confidence Thresholds
+
+| Metric | Min Sample per Variant | Min Duration | Watch For |
+|--------|----------------------|--------------|-----------|
+| Open rate (email) | 500 recipients | 48 hours | Time-of-send bias |
+| CTR (ads, email) | 100 clicks | 72 hours | Day-of-week variance; ad fatigue after day 5 |
+| Conversion (landing) | 50 conversions | 7 days | Weekend vs weekday; new vs returning visitors |
+| Scroll depth | 300 sessions | 72 hours | Device type (mobile ≠ desktop) |
+| Reply rate (cold) | 200 sends | 5 business days | Timezone delay; holiday weeks |
+
+**Red flags - do NOT iterate if:** <50 data points at relevant stage, <15% relative difference between variants, external events could explain variance, data covers only 1 day of week.
+
+### When NOT to Iterate with Biases
+- If the copy was generated for the wrong audience temperature entirely → re-run the full BIAS SELECTION from scratch.
+- If the product positioning changed → start a new piece. No iteration saves bad positioning.
+- If the platform changed (e.g., LinkedIn post → email) → use the new platform's scenario file.
+
+---
+
+## EXTERNAL REFERENCE FILES
+
+This skill is self-contained for core operation. The following files are preserved in the repository for deeper study, edge cases, and extended context. **Full GitHub URLs are provided** so an LLM working with only this SKILL.md file can instruct the user which files to download.
+
+**Loading rule - load ON DEMAND, never all at once:**
+- Standard content (social posts, emails, ads, landing sections): use inlined tables only. No external files.
+- Complex content (full sales pages, webinars, long-form, crisis, multi-language): load ONLY the scenario file for your format.
+- Non-Western markets with specific cultural edge cases: load `cultural-matrix.md` ONLY if the inlined Quick-Reference lacks the granularity you need.
+- Deep audit with ambiguous anti-patterns: load `anti-patterns.md` for the full checklist and before/after examples.
+- **NEVER pre-load all files.** Each external file is ~5-15KB. Loading all of them before a simple task wastes context and degrades quality. Load the minimum needed for the specific task.
+
+| File | Purpose | When to Cross-Reference | Download URL |
+|------|---------|------------------------|-------------|
+| `decision-matrix.md` | Full audience×product×platform bias mapping methodology | When the inlined Router doesn't match your use case, or you need to understand WHY a bias was chosen | https://github.com/MADEVAL/MindFluence/blob/main/decision-matrix.md |
+| `anti-patterns.md` | 12 AI copywriting failures with detailed examples, fixes, and audit checklist | When an audit finds an anti-pattern not fully covered by the inlined detection rules | https://github.com/MADEVAL/MindFluence/blob/main/anti-patterns.md |
+| `cultural-matrix.md` | Detailed bias-by-bias cultural adaptation across 4 dimensions + 12 region profiles | When targeting non-Western markets and the inlined Quick-Reference isn't granular enough | https://github.com/MADEVAL/MindFluence/blob/main/cultural-matrix.md |
+| `scenarios/` | 13 full scenario playbooks with bias-by-bias timing and section-by-section maps | When generating medium/high complexity content (sales pages, long-form, crisis response, webinars) | https://github.com/MADEVAL/MindFluence/tree/main/scenarios/ |
+| `examples/` | 7 annotated outputs showing bias stacks in action | When you need reference quality for a complex format | https://github.com/MADEVAL/MindFluence/tree/main/examples/ |
+| `README.md` | Project overview, integration guides, pipeline documentation | When you need setup instructions or pipeline integration details | https://github.com/MADEVAL/MindFluence/blob/main/README.md |
+| `README.ru.md` | Russian-language project overview | For Russian-speaking users | https://github.com/MADEVAL/MindFluence/blob/main/README.ru.md |
+
+> **Default rule:** Use the inlined tables and detection rules for all standard tasks. Cross-reference external files only when the task is unusually complex, or the target market/audience is outside the inlined coverage. The external files provide depth; the inlined content provides speed. **Load one file at a time - never pre-load the entire repository.**
+
+---
+
 ## OUTPUT FORMAT - 3 TIER
 
 ### COMPACT (output < 500 chars: tweets, push, SMS, ad headlines, Instagram captions)
@@ -908,4 +1225,103 @@ What's the one task you suspect is eating your profits but you've never measured
 LossAversion: "$23,000 lost" activates threat-detection. Availability: detailed story (41hrs, $43.90/hr, 11hrs revisions) creates vivid, recallable images. Anchoring: $75 vs $31 real rate. Confirmation: "clients who value you don't leave" - tells reader they were RIGHT to suspect undercharging.
 ```
 
-**End of MindFluence core. Full version: knowledge/reference/mindfluence-full.md**
+### Example 2: Landing Hero (STANDARD) - SaaS
+
+```
+[TONE: expert-calm]
+[BIASES ENGAGED: Availability(#6), LossAversion(#5), SocialProof(#1), Framing(#3), RiskReversal(tech)]
+[TARGET ACTION: Start free trial]
+
+Headline: Your team spent 11 hours last week copying data between tools.
+
+Subhead: That's 572 hours a year your competitors aren't wasting. Every week you wait, the gap compounds by 3.7% - we measured it across 2,400 teams.
+
+4,827 teams switched last month. Merge's ops team cut reporting from 11 hours to 17 minutes. "It paid for itself in week one." - Sarah Chen, VP Ops at Merge.
+
+[Start free trial - no credit card, setup takes 4 minutes]
+
+---
+[RATIONALE]
+Availability: concrete number (11 hours) + specific action (copying data) = reader relives their own pain. LossAversion: 572 hours annualized + 3.7% compounding = quantified accelerating threat. SocialProof: specific number(4,827) + named person(Sarah Chen) + role(VP Ops) + company(Merge) + measurable result(11h→17m) + direct quote. RiskReversal: "no credit card, 4 minutes" removes all friction.
+```
+
+### Example 3: Welcome Email (STANDARD) - SaaS
+
+```
+[TONE: warm-human]
+[BIASES ENGAGED: Reciprocity(tech), Endowment(#10), StatusQuo(#13)]
+[TARGET ACTION: Complete profile setup]
+
+Subject: Your [Product] workspace is ready
+
+Hi [Name],
+
+I'm [Founder Name]. I built [Product] because I spent 4 years watching teams burn $3,000/month on tools nobody used.
+
+Your workspace is already set up - I took the liberty of pre-loading a sample project so you can see how everything connects. It took me 4 minutes to build. It'll take you 4 minutes to explore.
+
+Here's the 3 things most new users check first:
+1. [Feature] - this is where [specific value]
+2. [Feature] - this replaces [old painful process]
+3. [Feature] - this one surprised even our beta testers
+
+If you get stuck, reply to this email. I read every one.
+
+- [First Name]
+  Founder, [Product]
+  (I wrote the [topic] guide that [credible person] shared last week.)
+
+---
+[RATIONALE]
+Reciprocity: pre-loaded workspace = genuine value before any ask. Endowment: "Your workspace is already set up" creates pseudo-ownership. StatusQuo: "4 minutes to explore" - change framed as trivial. Authority: one credibility signal in sign-off (guide shared by credible person). No pitch in email #1 - value first.
+```
+
+### Example 4: Search Ad (COMPACT) - B2B SaaS
+
+```
+[TONE: expert-calm]
+[BIASES: Anchoring(#2), SocialProof(#1), RiskReversal(tech)]
+
+Best CRM for Small Teams | From $19/mo
+4,827 teams switched. 4-min setup. No consultants.
+Start Free Trial - No Credit Card
+```
+
+### Example 5: Audit Output (EXTENDED) - Facebook Ad
+
+```
+[BIASES FOUND]
+- SocialProof(#1): "Thousands of happy customers"
+- Authority(#4): "Studies show"
+- Scarcity(tech): "Only 3 spots left"
+
+[ANTI-PATTERNS FOUND]
+- AP-1 (Vague Social Proof): "thousands" - no number, no name, no result.
+- AP-4 (Authority Without Proof): "Studies show" - no source, no year.
+- AP-6 (Fake Scarcity): "Only 3 spots" - no explanation of constraint.
+
+[RECOMMENDATIONS]
+1. Replace: "4,827 teams switched. Sarah Chen, Ops Director at Merge: 'Cut reporting 11h→17m.'"
+2. Replace: "Journal of Applied Psychology, 2024 (N=12,000): [mechanism] improves output 31%."
+3. Replace: "Cohort capped at 50 - our team of 3 gives individual feedback. 47/50 filled."
+4. ADD Framing with anchor: "Most tools: $12-25/user/mo, weeks to configure. Ours: $7/user, 30 seconds."
+5. ADD LossAversion: "Every month = $200-600 in per-seat costs on outdated tools."
+```
+
+> **More examples:** The `examples/` directory contains 7 fully annotated outputs - social post, landing hero, ad script, welcome email, longform article, audit example, and optimize example - each with complete bias dissection and rationale. Cross-reference when you need reference quality for an unfamiliar format.
+
+---
+
+## QUICK START
+
+**Minimal request:** "Write a LinkedIn post about [topic] for [audience]"
+**Deep request:** "Deep mode. I need a landing page for [product]. Ask me what you need."
+**Audit request:** "Audit this ad copy for cognitive biases and suggest improvements."
+**Optimize request:** "This landing page has 2% CTR. The hero gets views but nobody scrolls. Optimize."
+**Rewrite request:** "Rewrite this post with bias engineering." / "Перепиши это в bold-sell тоне." / "Add Social Proof and Loss Aversion to this text."
+**Cross-language:** "Write in German about [topic] for the DACH market."
+**Cross-cultural:** "Write a sales page for the Japanese market. Product: [product]. Audience: [audience]."
+
+---
+
+**End of SKILL.md v2.2**

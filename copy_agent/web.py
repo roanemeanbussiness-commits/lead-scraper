@@ -27,6 +27,20 @@ app = FastAPI(title="8-Thon Intelligence Copy Studio")
 DEFAULT_DATA_PATH = Path("/data") if os.name != "nt" and Path("/data").exists() else Path("data")
 STORE = ChatStore(Path(os.getenv("CHAT_STORE_PATH", str(DEFAULT_DATA_PATH / "copy_studio.db"))))
 HISTORY_LIMIT = 24
+HISTORY_CHAR_BUDGET = 24_000
+
+
+def trim_history(history: list[dict[str, str]], budget: int = HISTORY_CHAR_BUDGET) -> list[dict[str, str]]:
+    """Keep the newest messages that fit the character budget - Tier-1 OpenAI
+    accounts have tight tokens-per-minute limits, so history must stay small."""
+    kept: list[dict[str, str]] = []
+    used = 0
+    for message in reversed(history):
+        used += len(message["content"])
+        if kept and used > budget:
+            break
+        kept.append(message)
+    return list(reversed(kept))
 
 
 def search_model() -> str:
@@ -77,11 +91,11 @@ def chat(request: ChatRequest) -> StreamingResponse:
     # short history window instead of the full knowledge base.
     if request.research:
         system_prompt = build_compact_prompt()
-        history = STORE.messages(conversation_id, limit=6)
+        history = trim_history(STORE.messages(conversation_id, limit=6), budget=8_000)
         model = search_model()
     else:
         system_prompt = build_system_prompt(STORE)
-        history = STORE.messages(conversation_id, limit=HISTORY_LIMIT)
+        history = trim_history(STORE.messages(conversation_id, limit=HISTORY_LIMIT))
         model = None
     messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
     messages.extend({"role": m["role"], "content": m["content"]} for m in history)

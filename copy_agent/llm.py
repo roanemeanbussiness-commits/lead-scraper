@@ -66,7 +66,7 @@ class ChatClient:
         payload: dict[str, object] = {
             "model": chosen,
             "messages": messages,
-            "max_completion_tokens": int(os.getenv("OPENAI_MAX_COMPLETION_TOKENS", "4096")),
+            "max_completion_tokens": int(os.getenv("OPENAI_MAX_COMPLETION_TOKENS", "2048")),
         }
         if stream:
             payload["stream"] = True
@@ -100,7 +100,9 @@ class ChatClient:
                         if response.status_code in (429,) or response.status_code >= 500:
                             response.read()
                             if attempt < 2:
-                                time.sleep(2**attempt)
+                                # 429s here are usually per-minute token limits;
+                                # short backoffs never recover, so wait longer.
+                                time.sleep(12 * (attempt + 1) if response.status_code == 429 else 2**attempt)
                                 continue
                         if response.is_error:
                             response.read()
@@ -150,7 +152,7 @@ class ChatClient:
                 raise OpenAIError(f"OpenAI request failed: {exc}") from exc
             if response.status_code == 429 or response.status_code >= 500:
                 if attempt < 2:
-                    time.sleep(2**attempt)
+                    time.sleep(12 * (attempt + 1) if response.status_code == 429 else 2**attempt)
                     continue
             if response.is_error:
                 raise OpenAIError(openai_error_detail(response))

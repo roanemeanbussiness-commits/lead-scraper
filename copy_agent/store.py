@@ -141,7 +141,7 @@ class ChatStore:
             )
             return cursor.rowcount > 0
 
-    def learnings_digest(self, max_chars: int = 14_000) -> str:
+    def learnings_digest(self, max_chars: int = 8_000) -> str:
         """Newest-first digest of stored learnings for the system prompt."""
         chunks: list[str] = []
         used = 0
