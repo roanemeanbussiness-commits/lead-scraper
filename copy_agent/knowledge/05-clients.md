@@ -31,9 +31,25 @@ details there through chat notes.
 
 ## Joe
 
+- **Who:** a landscaping company (Joe is the owner).
 - **Status:** signed client.
-- **Details:** [NEEDS CLIENT FACT: industry, project scope, results. Ask the
-  owner and save the answer to memory.]
+- **Why it matters for copy:** classic local-services trade: seasonal
+  demand, route-based crews, estimates won or lost on response speed. Pairs
+  with Arthur's pool company as proof we serve real outdoor-trades
+  businesses, not just tech companies.
+- **Project specifics:** [NEEDS CLIENT FACT: what we built or are building
+  for Joe, and results so far. Ask the owner and save the answer to memory.]
+
+## Marco
+
+- **Who:** a realtor (real estate agent).
+- **Status:** signed client.
+- **Why it matters for copy:** real estate runs on personal brand, listings
+  velocity, and lead follow-up; it's a strong story lane for AI on the
+  service-professional side, not just trades.
+- **Project specifics:** [NEEDS CLIENT FACT: what we built or are building
+  for Marco, and results so far. Ask the owner and save the answer to
+  memory.]
 
 ## In-house build: the 8-Thon lead engine (real, shippable proof)
 
