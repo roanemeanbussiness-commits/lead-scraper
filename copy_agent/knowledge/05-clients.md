@@ -19,9 +19,15 @@ details there through chat notes.
 
 ## Arthur
 
+- **Who:** a pool construction company (Arthur is the owner).
 - **Status:** signed client.
-- **Details:** [NEEDS CLIENT FACT: industry, what we built or are building
-  for them, results so far. Ask the owner and save the answer to memory.]
+- **Why it matters for copy:** a real local-trades client in a high-ticket
+  home-services vertical. Pool construction runs on seasonal demand, big
+  ticket sizes, and speed-to-lead; it's exactly the kind of business our
+  AI-implementation content speaks to.
+- **Project specifics:** [NEEDS CLIENT FACT: what we built or are building
+  for Arthur, and results so far. Ask the owner and save the answer to
+  memory.]
 
 ## Joe
 
