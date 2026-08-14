@@ -219,5 +219,24 @@ class WebTests(unittest.TestCase):
         self.assertEqual(400, response.status_code)
 
 
+
+class HumanizeTests(unittest.TestCase):
+    def test_humanize_skill_loads_last(self) -> None:
+        names = [path.name for path in knowledge_files()]
+        self.assertEqual("z-humanize.md", names[-1])
+        prompt = build_system_prompt()
+        self.assertIn("NO EM DASHES", prompt)
+        self.assertIn("Not just X, but Y", prompt)
+        self.assertIn("delve", prompt)
+
+    def test_stream_scrubs_dashes(self) -> None:
+        from copy_agent.web import scrub_dashes
+
+        self.assertEqual(
+            "Verified leads, the ones that reply, cost 2-3x less.",
+            scrub_dashes("Verified leads—the ones that reply—cost 2–3x less."),
+        )
+        self.assertNotIn("—", scrub_dashes("a — b"))
+
 if __name__ == "__main__":
     unittest.main()

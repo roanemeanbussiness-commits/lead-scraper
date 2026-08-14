@@ -106,8 +106,9 @@ def chat(request: ChatRequest) -> StreamingResponse:
         try:
             client = ChatClient()
             for delta in client.stream(messages, model=model):
-                parts.append(delta)
-                yield sse({"type": "delta", "text": delta})
+                cleaned = scrub_dashes(delta)
+                parts.append(cleaned)
+                yield sse({"type": "delta", "text": cleaned})
         except OpenAIError as exc:
             yield sse({"type": "error", "message": str(exc)})
             return
@@ -120,6 +121,19 @@ def chat(request: ChatRequest) -> StreamingResponse:
         event_stream(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
+
+
+def scrub_dashes(text: str) -> str:
+    """Hard voice rule: no em or en dashes ever reach the reader.
+
+    The humanize skill instructs the model, and this backstop guarantees it
+    even when the model slips one through."""
+    return (
+        text.replace("\u2014", ", ")
+        .replace("\u2013", "-")
+        .replace(" , ", ", ")
+        .replace(",  ", ", ")
     )
 
 
