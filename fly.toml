@@ -1,7 +1,4 @@
-# fly.toml app configuration file generated for lead-scraper-rrhtda on 2026-08-04T18:14:36Z
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
+# fly.toml for lead-scraper-rrhtda - now the 8-Thon Intelligence Copy Studio
 
 app = 'lead-scraper-rrhtda'
 primary_region = 'iad'
@@ -10,15 +7,9 @@ primary_region = 'iad'
   dockerfile = 'Dockerfile'
 
 [env]
-  LEAD_HISTORY_PATH = '/data/lead_history.db'
-  COMPANY_CATALOG_PATH = '/data/company_catalog.db'
-  JOB_OUTPUT_PATH = '/data/jobs'
-  OCEAN_STORE_PATH = '/data/ocean_leads.db'
-  OCEAN_WEBHOOK_BASE_URL = 'https://lead-scraper-rrhtda.fly.dev'
-  OCEAN_REVEAL_WAIT_SECONDS = '120'
-  # Ocean credits are exhausted; pin every search to Google Places.
-  # Remove this line (or set it to 'ocean') after topping up Ocean.
-  LEAD_PROVIDER = 'google_places'
+  CHAT_STORE_PATH = '/data/copy_studio.db'
+  # OPENAI_MODEL = 'gpt-4.1'                  # override chat model here
+  # OPENAI_SEARCH_MODEL = 'gpt-4o-search-preview'
 
 [mounts]
   source = 'lead_data'
@@ -28,12 +19,11 @@ primary_region = 'iad'
 [http_service]
   internal_port = 8080
   force_https = true
-  # Searches run as background threads. Fly autostops on concurrent load, not
-  # request count, so status polling does not keep the machine alive and a
-  # running search was being SIGINT'd mid-flight. Keep one machine up.
-  auto_stop_machines = 'off'
+  # Chat streams are live HTTP connections, so autostop is safe again:
+  # an in-flight response counts as load, and an idle studio can sleep.
+  auto_stop_machines = 'stop'
   auto_start_machines = true
-  min_machines_running = 1
+  min_machines_running = 0
   processes = ['app']
 
 [[vm]]
